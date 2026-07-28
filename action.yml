@@ -1,0 +1,85 @@
+name: mcp-surface
+description: Smoke-test an MCP server and diff its tool surface against a recorded snapshot.
+branding:
+  icon: activity
+  color: purple
+
+inputs:
+  target:
+    description: 'URL of a remote MCP server, or the command that starts a local one (e.g. "node ./src/index.js").'
+    required: true
+  snapshot:
+    description: 'Path to a snapshot file to compare the surface against. Omit to run checks only.'
+    required: false
+  fail-on:
+    description: 'Fail at this level or above: error | warn | info.'
+    required: false
+    default: error
+  skip:
+    description: 'Space-separated rule ids to ignore.'
+    required: false
+    default: ''
+  timeout:
+    description: 'Per-request timeout in milliseconds.'
+    required: false
+    default: '20000'
+  version:
+    description: 'Version of mcp-surface to run.'
+    required: false
+    default: 'latest'
+  working-directory:
+    description: 'Directory to run in.'
+    required: false
+    default: '.'
+
+outputs:
+  report:
+    description: 'The JSON report.'
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        # Passed via env rather than interpolated into the command line so a
+        # target containing shell metacharacters can't break out.
+        MCP_SURFACE_TARGET: ${{ inputs.target }}
+        MCP_SURFACE_SNAPSHOT: ${{ inputs.snapshot }}
+        MCP_SURFACE_FAIL_ON: ${{ inputs.fail-on }}
+        MCP_SURFACE_SKIP: ${{ inputs.skip }}
+        MCP_SURFACE_TIMEOUT: ${{ inputs.timeout }}
+        MCP_SURFACE_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        args=(--fail-on "$MCP_SURFACE_FAIL_ON" --timeout "$MCP_SURFACE_TIMEOUT")
+        if [ -n "$MCP_SURFACE_SNAPSHOT" ]; then
+          args+=(--snapshot "$MCP_SURFACE_SNAPSHOT")
+        fi
+        for rule in $MCP_SURFACE_SKIP; do
+          args+=(--skip "$rule")
+        done
+
+        # `read -ra` splits the target into command + arguments.
+        read -ra target <<< "$MCP_SURFACE_TARGET"
+
+        # A single probe writes the readable report to the log and the JSON to
+        # a file, so the step output never disagrees with what you just read.
+        report_json="$(mktemp)"
+        args+=(--json-out "$report_json")
+
+        set +e
+        npx --yes "mcp-surface@$MCP_SURFACE_VERSION" "${target[@]}" "${args[@]}"
+        status=$?
+        set -e
+
+        {
+          echo "report<<MCP_SURFACE_EOF"
+          cat "$report_json" 2>/dev/null || echo '{}'
+          echo "MCP_SURFACE_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        exit $status

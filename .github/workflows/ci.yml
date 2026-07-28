@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.19', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # Dogfood: the fixture server exercises the real connect path, not mocks.
+      - name: Smoke-test the fixture server
+        run: node dist/cli.js node test/fixtures/healthy-server.js
+
+      - name: Detect a broken surface
+        run: |
+          if node dist/cli.js node test/fixtures/broken-server.js; then
+            echo "::error::Expected a non-zero exit for the broken fixture"
+            exit 1
+          fi
