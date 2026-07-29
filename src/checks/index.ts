@@ -1,4 +1,5 @@
 import { DEFAULT_CHECK_CONFIG, type Check, type CheckConfig, type Finding, type Surface } from '../types.js';
+import { callResultsCheck } from './calls.js';
 import { mutationAnnotationsCheck } from './mutation.js';
 import { namingCheck } from './naming.js';
 import { propertyDescriptionsCheck, requiredPropsCheck, schemaValidCheck } from './schema.js';
@@ -20,7 +21,8 @@ export const allChecks: Check[] = [
   surfaceSizeCheck,
   annotationsCheck,
   mutationAnnotationsCheck,
-  propertyDescriptionsCheck
+  propertyDescriptionsCheck,
+  callResultsCheck
 ];
 
 export interface RunChecksOptions {
@@ -58,6 +60,7 @@ export function runChecks(surface: Surface, opts: RunChecksOptions = {}): Findin
   return findings.filter((f) => !skip.has(f.rule));
 }
 
+export * from './calls.js';
 export * from './mutation.js';
 export * from './naming.js';
 export * from './schema.js';

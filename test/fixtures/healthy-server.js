@@ -39,6 +39,13 @@ const TOOLS = [
       required: ['a', 'b']
     },
     annotations: { readOnlyHint: true }
+  },
+  {
+    // Read-only with no required arguments, so `--call` will invoke it.
+    name: 'status',
+    description: 'Reports that the server is running.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true }
   }
 ];
 
@@ -51,6 +58,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
   if (name === 'add') {
     return { content: [{ type: 'text', text: String(Number(args?.a) + Number(args?.b)) }] };
+  }
+  if (name === 'status') {
+    return { content: [{ type: 'text', text: 'ok' }] };
   }
   return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
 });

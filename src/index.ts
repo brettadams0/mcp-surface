@@ -3,7 +3,7 @@
  * rather than through the CLI. See README "Use it as a library".
  */
 export { parseTarget, connect, type Target, type TargetOptions, type Connection } from './connect.js';
-export { probe } from './probe.js';
+export { probe, callEligibility } from './probe.js';
 export { allChecks, runChecks, type RunChecksOptions } from './checks/index.js';
 export {
   toSnapshot,

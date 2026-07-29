@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command, InvalidArgumentError } from 'commander';
 import pc from 'picocolors';
 import { parseTarget } from './connect.js';
@@ -39,6 +40,11 @@ function parsePositiveInt(value: string): number {
   return n;
 }
 
+// dist/cli.js sits one level below the package root.
+const VERSION = JSON.parse(
+  await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')
+).version as string;
+
 const program = new Command();
 
 program
@@ -72,9 +78,15 @@ program
     DEFAULT_CHECK_CONFIG.maxDescriptionChars
   )
   .option('--fail-on <level>', 'exit non-zero at this level or above: error | warn | info', 'error')
+  .option(
+    '--call',
+    'additionally invoke each tool that declares readOnlyHint and takes no required arguments, and report the result'
+  )
   .option('--json', 'emit machine-readable JSON instead of the text report')
   .option('--json-out <file>', 'also write the JSON report here, keeping the text report on stdout')
-  .version('0.1.0')
+  // Read from package.json rather than a literal, which had already drifted a
+  // version behind — `--version` lying is worse than not having it.
+  .version(VERSION)
   .showHelpAfterError();
 
 program.parse();
@@ -91,6 +103,7 @@ const opts = program.opts<{
   maxTools: number;
   maxDefinitionBytes: number;
   maxDescriptionChars: number;
+  call?: boolean;
   failOn: 'error' | 'warn' | 'info';
   json?: boolean;
   jsonOut?: string;
@@ -123,7 +136,8 @@ async function main(): Promise<number> {
       cwd: opts.cwd,
       env: opts.env,
       headers: opts.header,
-      timeoutMs: opts.timeout
+      timeoutMs: opts.timeout,
+      call: opts.call
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

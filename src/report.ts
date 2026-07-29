@@ -34,6 +34,7 @@ export function toJson(input: ReportInput): string {
         prompts: probe.surface.prompts.length
       },
       findings,
+      ...(probe.surface.calls ? { calls: probe.surface.calls } : {}),
       summary: countByLevel(findings),
       ...(diff ? { snapshotDiff: diff } : {})
     },
@@ -80,6 +81,19 @@ export function toText(input: ReportInput): string {
       const subject = f.subject ? `${pc.cyan(f.subject)} ` : '';
       out.push(`  ${BADGE[f.level]}  ${subject}${f.message} ${pc.dim(`[${f.rule}]`)}`);
     }
+  }
+
+  const calls = s.calls?.filter((c) => c.status !== 'skipped') ?? [];
+  if (calls.length > 0) {
+    out.push('');
+    out.push(pc.bold('Calls'));
+    for (const c of calls) {
+      const mark = c.status === 'ok' ? pc.green('ok  ') : pc.red('fail');
+      const detail = c.status === 'ok' ? pc.dim(`${c.durationMs}ms`) : pc.dim(c.reason ?? '');
+      out.push(`  ${mark}  ${pc.cyan(c.name)} ${detail}`);
+    }
+    const skipped = (s.calls?.length ?? 0) - calls.length;
+    if (skipped > 0) out.push(pc.dim(`  ${skipped} tool(s) not eligible to call`));
   }
 
   if (diff) {

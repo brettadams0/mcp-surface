@@ -36,6 +36,20 @@ export interface PromptSurface {
  * Everything a client can see about a server after `initialize`.
  * This is the object checks run against and the object snapshots record.
  */
+/** Outcome of actually invoking a tool, when `--call` is used. */
+export interface CallResult {
+  name: string;
+  /**
+   * `ok`      — returned a normal result.
+   * `error`   — returned `isError: true`; the tool ran and reported failure.
+   * `threw`   — the request itself failed (protocol error, timeout, crash).
+   * `skipped` — not eligible to be called; `reason` says why.
+   */
+  status: 'ok' | 'error' | 'threw' | 'skipped';
+  reason?: string;
+  durationMs?: number;
+}
+
 export interface Surface {
   server: { name: string; version: string };
   protocolVersion?: string;
@@ -49,6 +63,8 @@ export interface Surface {
    * "declared tools, list threw" from "never declared tools" — the first is a bug.
    */
   listErrors: Array<{ capability: 'tools' | 'resources' | 'prompts'; message: string }>;
+  /** Present only when `--call` ran. Absent means no tool was invoked. */
+  calls?: CallResult[];
 }
 
 export interface ProbeResult {

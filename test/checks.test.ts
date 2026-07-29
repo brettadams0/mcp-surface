@@ -158,6 +158,38 @@ describe('descriptions and annotations', () => {
   });
 });
 
+describe('tool-call results', () => {
+  // Deliberately routed through runChecks rather than the check directly: an
+  // earlier version worked in isolation but was never added to allChecks, so
+  // failed calls silently exited 0.
+  it('errors when a called tool returns isError', () => {
+    const s = surface({ calls: [{ name: 'get_thing', status: 'error', reason: 'no credentials' }] });
+    const f = find(s, 'tool-call-error');
+    expect(f?.level).toBe('error');
+    expect(f?.message).toContain('no credentials');
+  });
+
+  it('errors when a call fails at the protocol level', () => {
+    const s = surface({ calls: [{ name: 'get_thing', status: 'threw', reason: 'timed out' }] });
+    expect(find(s, 'tool-call-threw')?.level).toBe('error');
+  });
+
+  it('says nothing about a successful call', () => {
+    const s = surface({ calls: [{ name: 'get_thing', status: 'ok', durationMs: 5 }] });
+    expect(rules(s)).not.toContain('tool-call-error');
+    expect(rules(s)).not.toContain('tool-call-threw');
+  });
+
+  it('notes at info level when nothing was eligible', () => {
+    const s = surface({ calls: [{ name: 'get_thing', status: 'skipped', reason: 'needs args' }] });
+    expect(find(s, 'tool-call-none-eligible')?.level).toBe('info');
+  });
+
+  it('produces nothing at all when --call was not used', () => {
+    expect(rules(surface())).not.toContain('tool-call-none-eligible');
+  });
+});
+
 describe('mutation-annotations', () => {
   const fired = (t: Partial<ToolSurface>) =>
     find(surface({ tools: [tool(t)] }), 'mutation-annotations');

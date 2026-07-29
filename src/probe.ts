@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { connect, type Target, type TargetOptions } from './connect.js';
-import type { ProbeResult, PromptSurface, ResourceSurface, Surface, ToolSurface } from './types.js';
+import type {
+  CallResult,
+  ProbeResult,
+  PromptSurface,
+  ResourceSurface,
+  Surface,
+  ToolSurface
+} from './types.js';
 
 /**
  * Accept any object the server sends back.
@@ -99,9 +106,91 @@ function asPrompt(entry: unknown): PromptSurface {
  * the probe: that combination is one of the bugs this tool exists to catch,
  * and the other capabilities are still worth reporting.
  */
+/**
+ * Decide whether a tool is safe to invoke unattended.
+ *
+ * Two conditions, both required, both deliberately strict. `readOnlyHint: true`
+ * must be stated by the server — absence is not consent, because an unannotated
+ * tool is exactly the ambiguous case. And the tool must take no required
+ * arguments, since inventing plausible values for someone else's API is how you
+ * end up calling `delete_user({ id: "test" })`.
+ */
+export function callEligibility(tool: ToolSurface): { eligible: boolean; reason?: string } {
+  if (tool.annotations?.readOnlyHint !== true) {
+    return { eligible: false, reason: 'not annotated readOnlyHint: true' };
+  }
+  const schema = isRecord(tool.inputSchema) ? tool.inputSchema : {};
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  if (required.length > 0) {
+    return { eligible: false, reason: `needs required argument(s): ${required.join(', ')}` };
+  }
+  return { eligible: true };
+}
+
+/**
+ * Invoke every eligible tool with empty arguments and record what happened.
+ * Ineligible tools are recorded as `skipped` rather than omitted, so the report
+ * can show why a tool wasn't exercised instead of silently ignoring it.
+ */
+async function callEligibleTools(
+  client: Client,
+  tools: ToolSurface[],
+  timeoutMs: number
+): Promise<CallResult[]> {
+  const results: CallResult[] = [];
+
+  for (const tool of tools) {
+    const { eligible, reason } = callEligibility(tool);
+    if (!eligible) {
+      results.push({ name: tool.name, status: 'skipped', reason });
+      continue;
+    }
+
+    const startedAt = Date.now();
+    try {
+      const res = (await client.request(
+        { method: 'tools/call', params: { name: tool.name, arguments: {} } },
+        AnyResult,
+        { timeout: timeoutMs }
+      )) as Record<string, unknown>;
+
+      results.push({
+        name: tool.name,
+        // `isError` is how MCP reports a tool that ran and failed, as distinct
+        // from a protocol error — it arrives as a perfectly normal response.
+        status: res.isError === true ? 'error' : 'ok',
+        reason: res.isError === true ? summarise(res.content) : undefined,
+        durationMs: Date.now() - startedAt
+      });
+    } catch (err) {
+      results.push({
+        name: tool.name,
+        status: 'threw',
+        reason: errorMessage(err),
+        durationMs: Date.now() - startedAt
+      });
+    }
+  }
+
+  return results;
+}
+
+/** Pull a short human-readable line out of a tool result's content array. */
+function summarise(content: unknown): string {
+  if (!Array.isArray(content)) return 'tool reported an error';
+  const text = content
+    .filter((b): b is Record<string, unknown> => isRecord(b) && b.type === 'text')
+    .map((b) => str(b.text) ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return 'tool reported an error';
+  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+}
+
 export async function probe(
   target: Target,
-  opts: TargetOptions & { timeoutMs: number }
+  opts: TargetOptions & { timeoutMs: number; call?: boolean }
 ): Promise<ProbeResult> {
   const startedAt = Date.now();
   const connection = await connect(target, opts);
@@ -135,6 +224,12 @@ export async function probe(
       prompts: await collect('prompts', 'prompts/list', asPrompt),
       listErrors
     };
+
+    // Calls happen after the whole surface is read, so a tool that hangs or
+    // crashes the server still leaves us a complete surface to report on.
+    if (opts.call) {
+      surface.calls = await callEligibleTools(client, surface.tools, opts.timeoutMs);
+    }
 
     return { surface, stderr: connection.readStderr(), durationMs: Date.now() - startedAt };
   } finally {

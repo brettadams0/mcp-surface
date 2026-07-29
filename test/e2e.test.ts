@@ -19,7 +19,27 @@ describe('end-to-end against a real stdio server', () => {
     const result = await probe(parseTarget(['node', fixture('healthy-server.js')]), OPTS);
 
     expect(result.surface.server.name).toBe('healthy-fixture');
-    expect(result.surface.tools.map((t) => t.name).sort()).toEqual(['add', 'echo']);
+    expect(result.surface.tools.map((t) => t.name).sort()).toEqual(['add', 'echo', 'status']);
+    expect(result.surface.calls).toBeUndefined();
+    expect(runChecks(result.surface)).toEqual([]);
+  }, 30_000);
+
+  it('invokes only eligible tools when asked, and leaves the rest alone', async () => {
+    const result = await probe(parseTarget(['node', fixture('healthy-server.js')]), {
+      ...OPTS,
+      call: true
+    });
+
+    const byName = Object.fromEntries((result.surface.calls ?? []).map((c) => [c.name, c]));
+
+    // `status` is read-only with no required args — the one safe case.
+    expect(byName.status?.status).toBe('ok');
+    // `add` is read-only but needs arguments; `echo` isn't annotated at all.
+    expect(byName.add?.status).toBe('skipped');
+    expect(byName.add?.reason).toContain('required argument');
+    expect(byName.echo?.status).toBe('skipped');
+    expect(byName.echo?.reason).toContain('readOnlyHint');
+
     expect(runChecks(result.surface)).toEqual([]);
   }, 30_000);
 

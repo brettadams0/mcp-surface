@@ -56,6 +56,7 @@ mcp-surface https://example.com/sse --transport sse
 | `--max-tools <n>` | Warn above this many tools (default 40) |
 | `--max-definition-bytes <n>` | Warn when tool definitions exceed this (default 16384) |
 | `--max-description-chars <n>` | Note descriptions longer than this (default 1024) |
+| `--call` | Also invoke each tool that is safe to call, and report the result |
 | `--fail-on <level>` | Exit non-zero at `error` (default), `warn`, or `info` |
 | `--json` | Machine-readable output |
 | `--json-out <file>` | Write JSON to a file while keeping the readable report on stdout |
@@ -103,6 +104,27 @@ Or plainly:
 - run: npx mcp-surface node ./src/index.js --snapshot mcp-surface.json
 ```
 
+## Actually calling tools
+
+Everything above inspects what a server *advertises*. `--call` goes one step further and invokes tools, so you find out whether they work rather than whether they're well-formed.
+
+```console
+$ mcp-surface node ./src/index.js --call
+
+Calls
+  ok    chess_get_leaderboards 214ms
+  8 tool(s) not eligible to call
+```
+
+**A tool is only called when both are true**, and there is no flag to loosen this:
+
+1. It declares `annotations.readOnlyHint: true`. Absence is not consent — an unannotated tool is precisely the ambiguous case.
+2. It takes no required arguments. Inventing plausible values for someone else's API is how you end up calling `delete_user({ id: "test" })`.
+
+Everything else is reported as skipped, with the reason. A tool that satisfies both conditions and *still* fails is a real defect: it either doesn't work or its annotations are wrong.
+
+This pairs with `mutation-annotations` — annotate your server honestly, and `--call` gets a safe set to exercise for free.
+
 ## Checks
 
 | Rule | Level | |
@@ -119,6 +141,9 @@ Or plainly:
 | `tool-description-missing` | warn | The model has only the name to go on |
 | `tool-annotations` | warn | Both `readOnlyHint` and `destructiveHint` set |
 | `mutation-annotations` | warn | Tool appears to change state but declares no annotations |
+| `tool-call-error` | error | `--call` only — an eligible tool returned `isError` |
+| `tool-call-threw` | error | `--call` only — the call failed at the protocol level |
+| `tool-call-none-eligible` | info | `--call` only — no tool met both safety conditions |
 | `surface-tool-count` | warn | More tools than `--max-tools` (default 40) |
 | `surface-token-cost` | warn | Definitions exceed `--max-definition-bytes` (default 16 KB) |
 | `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
