@@ -140,6 +140,53 @@ describe('descriptions and annotations', () => {
   });
 });
 
+describe('configurable limits', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => tool({ name: `tool_${i}` }));
+
+  it('uses the documented defaults when nothing is passed', () => {
+    expect(rules(surface({ tools: many(40) }))).not.toContain('surface-tool-count');
+    expect(rules(surface({ tools: many(41) }))).toContain('surface-tool-count');
+  });
+
+  it('respects a raised tool limit', () => {
+    const s = surface({ tools: many(41) });
+    const found = runChecks(s, { config: { maxTools: 60 } }).map((f) => f.rule);
+    expect(found).not.toContain('surface-tool-count');
+  });
+
+  it('respects a lowered tool limit and reports it in the message', () => {
+    const s = surface({ tools: many(3) });
+    const f = runChecks(s, { config: { maxTools: 2 } }).find((x) => x.rule === 'surface-tool-count');
+    expect(f?.message).toContain('limit of 2');
+    expect(f?.message).toContain('--max-tools');
+  });
+
+  it('respects a lowered byte budget', () => {
+    const f = runChecks(surface(), { config: { maxDefinitionBytes: 10 } }).find(
+      (x) => x.rule === 'surface-token-cost'
+    );
+    expect(f?.level).toBe('warn');
+    expect(f?.message).toContain('--max-definition-bytes');
+  });
+
+  it('respects a lowered description limit', () => {
+    const s = surface({ tools: [tool({ description: 'x'.repeat(50) })] });
+    const f = runChecks(s, { config: { maxDescriptionChars: 20 } }).find(
+      (x) => x.rule === 'tool-description-long'
+    );
+    expect(f?.level).toBe('info');
+    expect(f?.message).toContain('--max-description-chars');
+  });
+
+  it('leaves unset limits at their defaults', () => {
+    const s = surface({ tools: many(41) });
+    // Only the byte budget is overridden; the tool-count default must still apply.
+    expect(runChecks(s, { config: { maxDefinitionBytes: 999_999 } }).map((f) => f.rule)).toContain(
+      'surface-tool-count'
+    );
+  });
+});
+
 describe('skip', () => {
   it('drops findings by rule id', () => {
     const s = surface({ tools: [tool({ description: '' })] });

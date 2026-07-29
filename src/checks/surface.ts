@@ -1,11 +1,4 @@
-import type { Check, Finding } from '../types.js';
-
-/** Past roughly this many tools, selection accuracy degrades noticeably. */
-const TOOL_COUNT_WARN = 40;
-/** Descriptions are resent on every request; this is where the cost starts to bite. */
-const DESCRIPTION_BUDGET_BYTES = 16_384;
-/** A description this long is usually documentation that belongs elsewhere. */
-const LONG_DESCRIPTION_CHARS = 1_024;
+import type { Check, CheckConfig, Finding } from '../types.js';
 
 /**
  * The check this tool was written for: a server that connects cleanly and
@@ -50,7 +43,7 @@ export const listErrorsCheck: Check = {
 
 export const descriptionsCheck: Check = {
   id: 'tool-descriptions',
-  run(surface) {
+  run(surface, config: CheckConfig) {
     const findings: Finding[] = [];
 
     for (const tool of surface.tools) {
@@ -63,12 +56,12 @@ export const descriptionsCheck: Check = {
           subject: tool.name,
           message: 'No description — the model has only the name to decide when to call this'
         });
-      } else if (description.length > LONG_DESCRIPTION_CHARS) {
+      } else if (description.length > config.maxDescriptionChars) {
         findings.push({
           rule: 'tool-description-long',
           level: 'info',
           subject: tool.name,
-          message: `Description is ${description.length} chars and is resent on every request; consider trimming toward ${LONG_DESCRIPTION_CHARS}`
+          message: `Description is ${description.length} chars, over the ${config.maxDescriptionChars}-char limit, and is resent on every request (--max-description-chars)`
         });
       }
     }
@@ -77,16 +70,21 @@ export const descriptionsCheck: Check = {
   }
 };
 
+/**
+ * Size limits are heuristics, not spec rules, so the messages name the flag
+ * that changes them — a warning you can't tune reads as a verdict, and these
+ * numbers are a default rather than a measurement of anyone's workload.
+ */
 export const surfaceSizeCheck: Check = {
   id: 'surface-size',
-  run(surface) {
+  run(surface, config: CheckConfig) {
     const findings: Finding[] = [];
 
-    if (surface.tools.length > TOOL_COUNT_WARN) {
+    if (surface.tools.length > config.maxTools) {
       findings.push({
         rule: 'surface-tool-count',
         level: 'warn',
-        message: `${surface.tools.length} tools advertised (soft limit ${TOOL_COUNT_WARN}) — large surfaces measurably hurt tool-selection accuracy`
+        message: `${surface.tools.length} tools advertised, over the limit of ${config.maxTools} — large surfaces tend to hurt tool-selection accuracy (--max-tools)`
       });
     }
 
@@ -99,11 +97,11 @@ export const surfaceSizeCheck: Check = {
       0
     );
 
-    if (bytes > DESCRIPTION_BUDGET_BYTES) {
+    if (bytes > config.maxDefinitionBytes) {
       findings.push({
         rule: 'surface-token-cost',
         level: 'warn',
-        message: `Tool definitions total ~${(bytes / 1024).toFixed(1)} KB (soft limit ${DESCRIPTION_BUDGET_BYTES / 1024} KB) — this is resent on every request`
+        message: `Tool definitions total ~${(bytes / 1024).toFixed(1)} KB, over the limit of ${(config.maxDefinitionBytes / 1024).toFixed(1)} KB, and are resent on every request (--max-definition-bytes)`
       });
     }
 

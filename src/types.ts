@@ -58,8 +58,34 @@ export interface ProbeResult {
   durationMs: number;
 }
 
-/** A check reads the surface and reports what it finds. Checks never throw. */
+/**
+ * Tunable limits for the size-related checks.
+ *
+ * These are heuristics, not spec requirements. The defaults are a starting
+ * point, not a measurement of your workload — a server whose tools are all
+ * short and unambiguous can carry more of them than one with sprawling
+ * schemas. Override them rather than treating a warning as a verdict.
+ */
+export interface CheckConfig {
+  /** Warn above this many tools. */
+  maxTools: number;
+  /** Warn when serialised tool definitions exceed this many bytes. */
+  maxDefinitionBytes: number;
+  /** Note descriptions longer than this many characters. */
+  maxDescriptionChars: number;
+}
+
+export const DEFAULT_CHECK_CONFIG: CheckConfig = {
+  maxTools: 40,
+  maxDefinitionBytes: 16_384,
+  maxDescriptionChars: 1_024
+};
+
+/**
+ * A check reads the surface and reports what it finds. Checks never throw.
+ * Checks that don't care about limits may omit the `config` parameter.
+ */
 export interface Check {
   id: string;
-  run(surface: Surface): Finding[];
+  run(surface: Surface, config: CheckConfig): Finding[];
 }

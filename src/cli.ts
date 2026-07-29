@@ -6,6 +6,7 @@ import pc from 'picocolors';
 import { parseTarget } from './connect.js';
 import { probe } from './probe.js';
 import { runChecks } from './checks/index.js';
+import { DEFAULT_CHECK_CONFIG } from './types.js';
 import { countByLevel, toJson, toText } from './report.js';
 import {
   diffSnapshots,
@@ -57,6 +58,19 @@ program
   .option('--snapshot <file>', 'compare the surface against this snapshot file')
   .option('--update-snapshot', 'write the current surface to the snapshot file instead of comparing')
   .option('--skip <rule>', 'rule or check id to ignore (repeatable)', (v: string, prev: string[] = []) => [...prev, v])
+  .option('--max-tools <n>', 'warn above this many tools', parsePositiveInt, DEFAULT_CHECK_CONFIG.maxTools)
+  .option(
+    '--max-definition-bytes <n>',
+    'warn when serialised tool definitions exceed this many bytes',
+    parsePositiveInt,
+    DEFAULT_CHECK_CONFIG.maxDefinitionBytes
+  )
+  .option(
+    '--max-description-chars <n>',
+    'note descriptions longer than this',
+    parsePositiveInt,
+    DEFAULT_CHECK_CONFIG.maxDescriptionChars
+  )
   .option('--fail-on <level>', 'exit non-zero at this level or above: error | warn | info', 'error')
   .option('--json', 'emit machine-readable JSON instead of the text report')
   .option('--json-out <file>', 'also write the JSON report here, keeping the text report on stdout')
@@ -74,6 +88,9 @@ const opts = program.opts<{
   snapshot?: string;
   updateSnapshot?: boolean;
   skip?: string[];
+  maxTools: number;
+  maxDefinitionBytes: number;
+  maxDescriptionChars: number;
   failOn: 'error' | 'warn' | 'info';
   json?: boolean;
   jsonOut?: string;
@@ -118,7 +135,14 @@ async function main(): Promise<number> {
     return EXIT_UNREACHABLE;
   }
 
-  const findings = runChecks(result.surface, { skip: opts.skip });
+  const findings = runChecks(result.surface, {
+    skip: opts.skip,
+    config: {
+      maxTools: opts.maxTools,
+      maxDefinitionBytes: opts.maxDefinitionBytes,
+      maxDescriptionChars: opts.maxDescriptionChars
+    }
+  });
   const current = toSnapshot(result.surface);
   let diff;
 

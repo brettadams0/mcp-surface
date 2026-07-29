@@ -53,6 +53,9 @@ mcp-surface https://example.com/sse --transport sse
 | `--snapshot <file>` | Compare the surface against a recorded snapshot |
 | `--update-snapshot` | Record the current surface instead of comparing |
 | `--skip <rule>` | Ignore a rule or check id (repeatable) |
+| `--max-tools <n>` | Warn above this many tools (default 40) |
+| `--max-definition-bytes <n>` | Warn when tool definitions exceed this (default 16384) |
+| `--max-description-chars <n>` | Note descriptions longer than this (default 1024) |
 | `--fail-on <level>` | Exit non-zero at `error` (default), `warn`, or `info` |
 | `--json` | Machine-readable output |
 | `--json-out <file>` | Write JSON to a file while keeping the readable report on stdout |
@@ -115,12 +118,14 @@ Or plainly:
 | `tool-name-case-collision` | warn | Names differing only by case |
 | `tool-description-missing` | warn | The model has only the name to go on |
 | `tool-annotations` | warn | Both `readOnlyHint` and `destructiveHint` set |
-| `surface-tool-count` | warn | More than 40 tools; selection accuracy degrades |
-| `surface-token-cost` | warn | Tool definitions exceed 16 KB, resent on every request |
-| `tool-description-long` | info | A description over 1024 chars |
+| `surface-tool-count` | warn | More tools than `--max-tools` (default 40) |
+| `surface-token-cost` | warn | Definitions exceed `--max-definition-bytes` (default 16 KB) |
+| `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
 | `schema-property-descriptions` | info | Input properties with no description |
 
 Silence any of them with `--skip <rule>`.
+
+The three size limits are **heuristics, not spec requirements**, and the defaults are a starting point rather than a measurement of your workload — a server whose tools are short and unambiguous can carry more of them than one with sprawling schemas. Tune them to your own server and treat the warning as a prompt to check, not a verdict.
 
 ## Use it as a library
 

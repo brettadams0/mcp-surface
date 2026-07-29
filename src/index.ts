@@ -16,8 +16,10 @@ export {
   type SnapshotDiff
 } from './snapshot.js';
 export { toJson, toText, countByLevel, type ReportInput } from './report.js';
+export { DEFAULT_CHECK_CONFIG } from './types.js';
 export type {
   Check,
+  CheckConfig,
   Finding,
   Level,
   ProbeResult,

@@ -1,4 +1,4 @@
-import type { Check, Finding, Surface } from '../types.js';
+import { DEFAULT_CHECK_CONFIG, type Check, type CheckConfig, type Finding, type Surface } from '../types.js';
 import { namingCheck } from './naming.js';
 import { propertyDescriptionsCheck, requiredPropsCheck, schemaValidCheck } from './schema.js';
 import {
@@ -24,6 +24,8 @@ export const allChecks: Check[] = [
 export interface RunChecksOptions {
   /** Rule ids or check ids to skip, e.g. `['tool-description-missing']`. */
   skip?: string[];
+  /** Override any of the size limits; unset fields keep their defaults. */
+  config?: Partial<CheckConfig>;
 }
 
 /**
@@ -34,12 +36,13 @@ export interface RunChecksOptions {
  */
 export function runChecks(surface: Surface, opts: RunChecksOptions = {}): Finding[] {
   const skip = new Set(opts.skip ?? []);
+  const config: CheckConfig = { ...DEFAULT_CHECK_CONFIG, ...opts.config };
   const findings: Finding[] = [];
 
   for (const check of allChecks) {
     if (skip.has(check.id)) continue;
     try {
-      findings.push(...check.run(surface));
+      findings.push(...check.run(surface, config));
     } catch (err) {
       findings.push({
         rule: 'check-crashed',
