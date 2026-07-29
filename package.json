@@ -1,6 +1,6 @@
 {
   "name": "mcp-surface",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "See the tool surface your MCP server actually exposes: probe it like a real client, validate schemas, and fail CI when the surface changes unintentionally.",
   "keywords": [
     "mcp",
