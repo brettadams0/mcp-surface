@@ -137,6 +137,10 @@ export const propertyDescriptionsCheck: Check = {
       const undocumented = Object.entries(properties)
         .filter(([, spec]) => {
           if (!isObject(spec)) return true;
+          // A `$ref` carries its description at the reference target. Zod emits
+          // these whenever two properties share one schema object, so flagging
+          // them reports a property that is in fact documented.
+          if (typeof spec.$ref === 'string') return false;
           const description = spec.description;
           return typeof description !== 'string' || description.trim() === '';
         })

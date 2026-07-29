@@ -94,6 +94,24 @@ describe('schema checks', () => {
     expect(find(s, 'schema-root-type')?.message).toContain('outputSchema');
   });
 
+  it('does not flag a $ref property, whose description lives at the target', () => {
+    // Zod emits a $ref whenever two properties share one schema object.
+    const s = surface({
+      tools: [
+        tool({
+          inputSchema: {
+            type: 'object',
+            properties: {
+              start: { type: 'object', description: 'An event boundary.' },
+              end: { $ref: '#/properties/start' }
+            }
+          }
+        })
+      ]
+    });
+    expect(rules(s)).not.toContain('schema-property-descriptions');
+  });
+
   it('flags undocumented properties at info level only', () => {
     const s = surface({
       tools: [tool({ inputSchema: { type: 'object', properties: { id: { type: 'string' } } } })]
