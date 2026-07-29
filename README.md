@@ -118,12 +118,19 @@ Or plainly:
 | `tool-name-case-collision` | warn | Names differing only by case |
 | `tool-description-missing` | warn | The model has only the name to go on |
 | `tool-annotations` | warn | Both `readOnlyHint` and `destructiveHint` set |
+| `mutation-annotations` | warn | Tool appears to change state but declares no annotations |
 | `surface-tool-count` | warn | More tools than `--max-tools` (default 40) |
 | `surface-token-cost` | warn | Definitions exceed `--max-definition-bytes` (default 16 KB) |
 | `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
 | `schema-property-descriptions` | info | Input properties with no description |
 
 Silence any of them with `--skip <rule>`.
+
+### Why `mutation-annotations` matters
+
+A client that offers "auto-approve read-only tools" decides by reading `annotations.readOnlyHint`. When a server declares no annotations at all, a tool that posts publicly and a tool that reads a profile are indistinguishable — so either everything gets a confirmation prompt, or nothing does.
+
+The check guesses from names and descriptions, so it warns rather than errors and always names the signal that triggered it. It respects verb order: `get_post` reads, `post_comment` writes. Silence it with `--skip mutation-annotations`.
 
 The three size limits are **heuristics, not spec requirements**, and the defaults are a starting point rather than a measurement of your workload — a server whose tools are short and unambiguous can carry more of them than one with sprawling schemas. Tune them to your own server and treat the warning as a prompt to check, not a verdict.
 

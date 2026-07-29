@@ -158,6 +158,55 @@ describe('descriptions and annotations', () => {
   });
 });
 
+describe('mutation-annotations', () => {
+  const fired = (t: Partial<ToolSurface>) =>
+    find(surface({ tools: [tool(t)] }), 'mutation-annotations');
+
+  it('warns on a mutating tool with no annotations', () => {
+    const f = fired({ name: 'reddit_submit_post' });
+    expect(f?.level).toBe('warn');
+    expect(f?.message).toContain('"submit"');
+  });
+
+  it('matches camelCase names too', () => {
+    expect(fired({ name: 'createPlaylist' })?.message).toContain('"create"');
+  });
+
+  it('catches a consequential description even when the name is neutral', () => {
+    expect(fired({ name: 'do_thing', description: 'Runs it immediately.' })?.message).toContain(
+      'immediately'
+    );
+  });
+
+  it('stays quiet for read tools', () => {
+    for (const name of ['chess_get_profile', 'list_users', 'search_clans']) {
+      expect(fired({ name })).toBeUndefined();
+    }
+  });
+
+  it('lets the first verb decide when a noun doubles as a verb', () => {
+    // "post" is the object in get_post and the action in post_comment.
+    expect(fired({ name: 'reddit_get_post' })).toBeUndefined();
+    expect(fired({ name: 'youtube_post_comment' })?.message).toContain('"post"');
+    expect(fired({ name: 'sheets_read_range' })).toBeUndefined();
+    expect(fired({ name: 'sheets_write_range' })?.message).toContain('"write"');
+  });
+
+  it('does not match a verb appearing inside another word', () => {
+    // "current" contains "curren"/"rent" but no whole segment is a verb.
+    expect(fired({ name: 'chess_get_current_games' })).toBeUndefined();
+  });
+
+  it('stays quiet once the author has declared any annotation', () => {
+    expect(fired({ name: 'reddit_submit_post', annotations: { destructiveHint: true } })).toBeUndefined();
+    expect(fired({ name: 'reddit_submit_post', annotations: { readOnlyHint: false } })).toBeUndefined();
+  });
+
+  it('treats an empty annotations object as undeclared', () => {
+    expect(fired({ name: 'reddit_submit_post', annotations: {} })?.level).toBe('warn');
+  });
+});
+
 describe('configurable limits', () => {
   const many = (n: number) => Array.from({ length: n }, (_, i) => tool({ name: `tool_${i}` }));
 
