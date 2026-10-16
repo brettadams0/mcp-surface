@@ -3,6 +3,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { VERSION } from './version.js';
 
 export interface TargetOptions {
   cwd?: string;
@@ -86,7 +87,9 @@ export async function connect(
   }
 
   const client = new Client(
-    { name: 'mcp-surface', version: '0.1.0' },
+    // Servers see this in `initialize`; a stale literal here misreports which
+    // checker connected to them.
+    { name: 'mcp-surface', version: VERSION },
     // Declare nothing: we only read the surface, so a server that gates tools
     // behind client capabilities should still show us its unconditional set.
     { capabilities: {} }

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseTarget } from '../src/connect.js';
 import { probe } from '../src/probe.js';
 import { runChecks } from '../src/checks/index.js';
+import { VERSION } from '../src/version.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => join(here, 'fixtures', name);
@@ -22,6 +23,15 @@ describe('end-to-end against a real stdio server', () => {
     expect(result.surface.tools.map((t) => t.name).sort()).toEqual(['add', 'echo', 'status']);
     expect(result.surface.calls).toBeUndefined();
     expect(runChecks(result.surface)).toEqual([]);
+  }, 30_000);
+
+  it('identifies itself to the server with the real package version', async () => {
+    const result = await probe(parseTarget(['node', fixture('healthy-server.js')]), OPTS);
+
+    expect(result.stderr).toContain(
+      `client: ${JSON.stringify({ name: 'mcp-surface', version: VERSION })}`
+    );
+    expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
   }, 30_000);
 
   it('invokes only eligible tools when asked, and leaves the rest alone', async () => {

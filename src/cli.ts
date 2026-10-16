@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import pc from 'picocolors';
 import { parseTarget } from './connect.js';
 import { probe } from './probe.js';
 import { runChecks } from './checks/index.js';
 import { DEFAULT_CHECK_CONFIG } from './types.js';
+import { VERSION } from './version.js';
 import { countByLevel, toJson, toText } from './report.js';
 import {
   diffSnapshots,
@@ -39,11 +39,6 @@ function parsePositiveInt(value: string): number {
   if (!Number.isFinite(n) || n <= 0) throw new InvalidArgumentError(`Expected a positive number, got "${value}"`);
   return n;
 }
-
-// dist/cli.js sits one level below the package root.
-const VERSION = JSON.parse(
-  await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')
-).version as string;
 
 const program = new Command();
 
