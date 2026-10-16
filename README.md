@@ -186,6 +186,25 @@ Tool listing does not require credentials on most servers — auth is enforced w
 
 Built against `@modelcontextprotocol/sdk` 1.x, which is what the current server ecosystem uses.
 
+## Used by
+
+Each of these servers runs `mcp-surface` in CI against a committed snapshot, so
+renaming a tool, rewording its description, changing its schema or dropping an
+annotation shows up as a diff in the pull request that caused it — not as a
+quieter model a week later.
+
+| Server | Tools | Auth model |
+|---|---|---|
+| [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) | 23 | Self-owned Google OAuth client, write-only scopes |
+| [supercell-mcp](https://github.com/brettadams0/supercell-mcp) | 15 | Static API keys bound to an IP allowlist |
+| [reddit-mcp](https://github.com/brettadams0/reddit-mcp) | 12 | OAuth2, non-rotating refresh token |
+| [yahoo-fantasy-mcp](https://github.com/brettadams0/yahoo-fantasy-mcp) | 10 | OAuth2, refresh token rotated on every use |
+| [chesscom-mcp](https://github.com/brettadams0/chesscom-mcp) | 9 | None — public API |
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT
