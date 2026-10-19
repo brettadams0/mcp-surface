@@ -7,19 +7,25 @@
 
 See the tool surface your [MCP](https://modelcontextprotocol.io) server actually exposes. Connect the way a real client does, validate what comes back, and fail CI when that surface changes without you meaning it to.
 
+Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a server that completes the handshake and that any client would show as connected:
+
 ```console
-$ npx mcp-surface node ./src/index.js
+$ npx mcp-surface node ./broken-server.js
 
-chesscom 1.0.0 (405ms)
-9 tools · 0 resources · 0 prompts · capabilities: tools
+broken-fixture 1.0.0 (56ms)
+5 tools · 0 resources · 0 prompts · capabilities: tools
 
-  chess_get_profile — Public profile info (name, title, country, followers, join date) for a …
-  chess_get_stats — Rating and win/loss/draw stats per game format (bullet, blitz, rapid, d…
+  unsatisfiable — Requires an argument that its schema never defines.
+  wrong_root_type — Declares an array where the spec requires an object.
   …
 
-  info   chess_get_profile 1 input property has no description: username [schema-property-descriptions]
+  error  wrong_root_type inputSchema.type is "array", but MCP requires "object" [schema-root-type]
+  error  bad_schema inputSchema is not valid JSON Schema: … [schema-valid]
+  error  unsatisfiable inputSchema.required lists "apiKey" with no matching entry in properties — those arguments can never be satisfied [schema-required-props]
+  error  duplicate Advertised 2 times — only one of them is reachable by a client [tool-duplicate-name]
+  info   bad_schema 1 input property has no description: count [schema-property-descriptions]
 
-0 errors, 0 warnings, 8 info
+4 errors, 0 warnings, 1 info
 ```
 
 ## Why
@@ -85,11 +91,25 @@ mcp-surface node ./src/index.js --snapshot mcp-surface.json --update-snapshot   
 mcp-surface node ./src/index.js --snapshot mcp-surface.json                     # verify in CI
 ```
 
+It catches quieter changes too. Upgrading Zod from 3 to 4 in [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) passed all 30 of its unit tests, and changed the schema of every tool it has — Zod 4 stopped closing objects to extra properties and added a long pattern to every email field:
+
 ```console
+$ npm run -s surface
+
+google-workspace 2.0.0 (298ms)
+23 tools · 0 resources · 0 prompts · capabilities: tools
+  …
+  warn   Tool definitions total ~16.6 KB, over the limit of 16.0 KB, and are resent on every request (--max-definition-bytes) [surface-token-cost]
+
 Snapshot mcp-surface.json
-  + tool chess_get_clubs
-  ~ tool chess_get_club: description changed
+  ~ tool calendar_create_event: inputSchema changed
+  ~ tool calendar_delete_event: inputSchema changed
+  ~ tool calendar_list_events: inputSchema changed
+  …
+  ~ tool youtube_subscribe: inputSchema changed
   Run with --update-snapshot if these changes are intended.
+
+0 errors, 1 warning, 0 info
 ```
 
 Snapshots are canonicalised — keys and tools are sorted, so reordering never produces a spurious diff. The server *version* is excluded on purpose: a release bump is not a surface change, and failing CI on it just teaches people to re-record reflexively, which defeats the point.
@@ -114,11 +134,11 @@ Or plainly:
 Everything above inspects what a server *advertises*. `--call` goes one step further and invokes tools, so you find out whether they work rather than whether they're well-formed.
 
 ```console
-$ mcp-surface node ./src/index.js --call
-
+$ mcp-surface node ./test/fixtures/healthy-server.js --call
+  ⋮
 Calls
-  ok    chess_get_leaderboards 214ms
-  8 tool(s) not eligible to call
+  ok    status 3ms
+  2 tool(s) not eligible to call
 ```
 
 **A tool is only called when both are true**, and there is no flag to loosen this:
@@ -185,6 +205,22 @@ Tool listing does not require credentials on most servers — auth is enforced w
 `mcp-surface` deliberately bypasses the SDK's response validation when reading the surface. The SDK's strict `ListToolsResultSchema` rejects the *entire* list if one tool is malformed, which would reduce every report to "the response failed to parse" for precisely the servers worth checking. Reading the raw result and judging it here is what lets the report say *which* tool is broken and *how*. Servers built on the TypeScript SDK can't emit some of these faults at all, since it validates on the way out — but Python, Go, and hand-rolled servers have no such guard.
 
 Built against `@modelcontextprotocol/sdk` 1.x, which is what the current server ecosystem uses.
+
+## Used by
+
+Each of these servers runs `mcp-surface` in CI against a committed snapshot, so
+renaming a tool, rewording its description, changing its schema or dropping an
+annotation shows up as a diff in the pull request that caused it — not as a
+quieter model a week later.
+
+| Server | Tools | Auth model |
+|---|---|---|
+| [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) | 23 | Self-owned Google OAuth client, no restricted scopes |
+| [reddit-mcp](https://github.com/brettadams0/reddit-mcp) | 12 | OAuth2, non-rotating refresh token |
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
