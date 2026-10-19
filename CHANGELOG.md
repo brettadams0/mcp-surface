@@ -11,6 +11,9 @@ may change the CLI or the JSON report shape.
 
 - The client now identifies itself in `initialize` with the real package
   version. It had been sending a hard-coded `0.1.0` since the first release.
+  If the library is bundled into another package, where its own package.json
+  can't be found, it reports `0.0.0-unknown` rather than failing to import or
+  borrowing the host package's version.
 
 ### Security
 

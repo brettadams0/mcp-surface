@@ -60,15 +60,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return { content: [{ type: 'text', text: String(Number(args?.a) + Number(args?.b)) }] };
   }
   if (name === 'status') {
-    return { content: [{ type: 'text', text: 'ok' }] };
+    // Names the client that connected, so the e2e test can check the
+    // clientInfo mcp-surface identifies itself with.
+    return { content: [{ type: 'text', text: `ok: ${JSON.stringify(server.getClientVersion())}` }] };
   }
   return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
 });
-
-// Report who connected, on stderr where the probe captures it, so the e2e test
-// can check the clientInfo mcp-surface identifies itself with.
-server.oninitialized = () => {
-  process.stderr.write(`client: ${JSON.stringify(server.getClientVersion())}\n`);
-};
 
 await server.connect(new StdioServerTransport());

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseTarget } from '../src/connect.js';
+import { connect, parseTarget } from '../src/connect.js';
 import { probe } from '../src/probe.js';
 import { runChecks } from '../src/checks/index.js';
 import { VERSION } from '../src/version.js';
@@ -26,11 +26,17 @@ describe('end-to-end against a real stdio server', () => {
   }, 30_000);
 
   it('identifies itself to the server with the real package version', async () => {
-    const result = await probe(parseTarget(['node', fixture('healthy-server.js')]), OPTS);
-
-    expect(result.stderr).toContain(
-      `client: ${JSON.stringify({ name: 'mcp-surface', version: VERSION })}`
-    );
+    // Asked through a tool result rather than the server's stderr: stderr is a
+    // separate pipe, with no ordering guarantee against the responses.
+    const connection = await connect(parseTarget(['node', fixture('healthy-server.js')]), OPTS);
+    try {
+      const result = await connection.client.callTool({ name: 'status' });
+      expect(result.content).toEqual([
+        { type: 'text', text: `ok: ${JSON.stringify({ name: 'mcp-surface', version: VERSION })}` }
+      ]);
+    } finally {
+      await connection.close();
+    }
     expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
   }, 30_000);
 
