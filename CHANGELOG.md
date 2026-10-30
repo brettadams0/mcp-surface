@@ -7,6 +7,16 @@ may change the CLI or the JSON report shape.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: Node 22.12 or newer is required.** `engines.node` moves from `>=20.19.0` to
+  `>=22.12.0`. Node 20 has been end-of-life since 2026-04-30, and vitest 5 requires `^22.12`. CI
+  now runs on 22.12, 22 and 24.
+- Built with TypeScript 7. The emitted `dist/*.js` and `dist/*.d.ts` are byte-identical to the
+  TypeScript 5.9 build; only the source maps differ. Tests run on vitest 5.
+- CI installs the packed tarball into an empty project and runs its bin, so a `files` list or
+  `bin` path that only works from the checkout fails the build.
+
 ### Fixed
 
 - The client now identifies itself in `initialize` with the real package

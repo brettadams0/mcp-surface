@@ -17,7 +17,7 @@ the browser: break a `tools/list` response and watch the report change as you ty
 
 ```sh
 npx mcp-surface node ./src/index.js      # no install
-npm install -D mcp-surface               # in a project; Node 20.19 or newer <!-- PENDING W1: engines change -->
+npm install -D mcp-surface               # in a project; Node 22.12 or newer
 ```
 
 Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a server that completes
@@ -50,8 +50,26 @@ servers have no such guard. Every fault in it is one a real server can ship with
 none of them breaks the handshake. CI runs the built CLI against it on every push and fails if it
 exits zero, and against a healthy fixture that must exit zero.
 
-<!-- PENDING W1: the Zod 3→4 regression story. Supervisor ruling: publish only if W1
-substantiates it; otherwise drop it entirely, no softened version. -->
+The case that matters is a real one. Dependabot opened the same Zod 3 → 4 upgrade in all five of
+the MCP servers that use this tool. In every one, lint and the unit tests passed, and the build
+failed only at the `mcp-surface` snapshot step:
+
+| Zod 3.25.76 → 4.6.7 | Unit tests passing | Tools whose `inputSchema` changed |
+|---|---:|---:|
+| [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp/pull/15) | 33 / 33 | **23 / 23** |
+| [supercell-mcp](https://github.com/brettadams0/supercell-mcp/pull/12) | 19 / 19 | 15 / 15 |
+| [reddit-mcp](https://github.com/brettadams0/reddit-mcp/pull/13) | 27 / 27 | 11 / 12 |
+| [yahoo-fantasy-mcp](https://github.com/brettadams0/yahoo-fantasy-mcp/pull/13) | 19 / 19 | 9 / 10 |
+| [chesscom-mcp](https://github.com/brettadams0/chesscom-mcp/pull/12) | 14 / 14 | 8 / 9 |
+| **All five** | **112 / 112** | **66 / 69** |
+
+The schemas didn't break; they changed, and nothing else noticed. In google-workspace-mcp, 18 of the
+23 differ only because Zod 4 stops emitting `additionalProperties: false` — 26 occurrences gone —
+so the schema those tools advertise stopped forbidding extra arguments. The other five
+also gained `pattern`s on email fields, an inlined `$ref`, and a new `maximum`. Whether that is
+acceptable is a decision; the point is that it is now a decision someone makes in the pull
+request, rather than a looser contract that ships unread. None of the five upgrades has been
+merged.
 
 The suite is 54 tests in three files, all passing. The end-to-end tests drive the two fixture
 servers over real stdio, not mocks — but they are local fixtures, not third-party servers, so what
@@ -110,14 +128,26 @@ listed as skipped, with the reason. ([`probe.ts`](src/probe.ts), [`calls.ts`](sr
 
 ## Reading the list the SDK would reject
 
-<!-- FACT needed (W1): the measurement for this section — the SDK's ListToolsResultSchema run
-against broken-server.js's tools/list response (what it returns or throws), next to the number of
-tools mcp-surface reports individually from the same response. -->
 `client.listTools()` validates the response against the SDK's strict `ListToolsResultSchema`. One
 malformed tool fails that validation, and the whole list goes with it, so a checker built on it can
 only say "the response failed to parse" — for exactly the servers that need checking.
 `mcp-surface` sends `tools/list` with a schema that accepts any object, keeps every entry, and lets
 its own rules say which tool is broken and how.
+
+Measured against the same `tools/list` response from the broken fixture, using SDK 1.32.1:
+
+| | Tools read | Tools with findings |
+|---|---:|---:|
+| SDK `Client.listTools()` | **0 of 5** | — |
+| `mcp-surface` | **5 of 5** | 4 (4 errors, 1 info) |
+
+The SDK throws on the first issue, `tools.1.inputSchema.type: expected "object"`, and returns
+nothing. The fixture is broken on purpose, so this shows the mechanism, not how often real servers
+hit it. To reproduce:
+
+```sh
+npm run build && node scripts/sdk-vs-surface.mjs
+```
 
 The cost is that it has to do the SDK's job itself, defensively: names that aren't strings,
 schemas that aren't objects, and `$ref` properties — a property defined by `$ref` has no inline
@@ -125,8 +155,7 @@ schemas that aren't objects, and `$ref` properties — a property defined by `$r
 
 ## Running it
 
-<!-- PENDING W1: engines change drops Node 20 -->
-Node 20.19 or newer.
+Node 22.12 or newer.
 
 ```sh
 mcp-surface node ./src/index.js                     # stdio
@@ -223,15 +252,17 @@ expect(result.surface.tools.map((t) => t.name)).toContain('get_weather');
 
 ### Used by
 
-<!-- FACT needed (W1): tool counts from each server's committed mcp-surface.json. -->
 Each of these runs `mcp-surface` in CI against a committed snapshot, so renaming a tool, rewording
 its description, changing its schema or dropping an annotation shows up as a diff in the pull
 request that caused it.
 
-| Server | Tools | Auth model |
-|---|---|---|
-| [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) | 23 | Self-owned Google OAuth client, no restricted scopes |
-| [reddit-mcp](https://github.com/brettadams0/reddit-mcp) | 12 | OAuth2, non-rotating refresh token |
+| Server | Tools |
+|---|---:|
+| [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) | 23 |
+| [supercell-mcp](https://github.com/brettadams0/supercell-mcp) | 15 |
+| [reddit-mcp](https://github.com/brettadams0/reddit-mcp) | 12 |
+| [yahoo-fantasy-mcp](https://github.com/brettadams0/yahoo-fantasy-mcp) | 10 |
+| [chesscom-mcp](https://github.com/brettadams0/chesscom-mcp) | 9 |
 
 ## Development
 
@@ -245,8 +276,7 @@ node dist/cli.js node test/fixtures/healthy-server.js  # must exit 0
 node dist/cli.js node test/fixtures/broken-server.js   # must exit non-zero
 ```
 
-<!-- PENDING W1: matrix after the engines change -->
-CI runs that on Node 20.19, 22 and 24, then packs the tarball npm would publish, installs it into
+CI runs that on Node 22.12, 22 and 24, then packs the tarball npm would publish, installs it into
 an empty project, and runs its bin against the healthy fixture — which catches a `files` list or
 `bin` path that works from the checkout but not from the registry.
 
