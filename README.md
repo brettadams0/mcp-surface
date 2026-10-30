@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/brettadams0/mcp-surface/actions/workflows/ci.yml/badge.svg)](https://github.com/brettadams0/mcp-surface/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/mcp-surface.svg)](https://www.npmjs.com/package/mcp-surface)
-[![node](https://img.shields.io/node/v/mcp-surface.svg)](https://www.npmjs.com/package/mcp-surface)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An [MCP](https://modelcontextprotocol.io) server can complete the handshake, show as **Connected**
