@@ -5,9 +5,24 @@
 [![node](https://img.shields.io/node/v/mcp-surface.svg)](https://www.npmjs.com/package/mcp-surface)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-See the tool surface your [MCP](https://modelcontextprotocol.io) server actually exposes. Connect the way a real client does, validate what comes back, and fail CI when that surface changes without you meaning it to.
+An [MCP](https://modelcontextprotocol.io) server can complete the handshake, show as **Connected**
+in every client, and still never be called by the model — because its tool list came back empty, a
+schema doesn't compile, or `required` names a property that isn't there. Nothing errors. The
+answers just get worse. `mcp-surface` connects the way a client does, reads back everything the
+server advertises, checks it, and fails CI when it changes without you meaning it to. It reads the
+server's raw `tools/list` response rather than the SDK's validated one, because the SDK rejects the
+whole list when one tool is malformed, and then there is nothing left to report on.
 
-Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a server that completes the handshake and that any client would show as connected:
+**[Live demo](https://brettadams0.github.io/mcp-surface/)** — the package's own checks, bundled for
+the browser: break a `tools/list` response and watch the report change as you type.
+
+```sh
+npx mcp-surface node ./src/index.js      # no install
+npm install -D mcp-surface               # in a project; Node 20.19 or newer <!-- PENDING W1: engines change -->
+```
+
+Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a server that completes
+the handshake and that any client would show as connected:
 
 ```console
 $ npx mcp-surface node ./broken-server.js
@@ -28,35 +43,105 @@ broken-fixture 1.0.0 (56ms)
 4 errors, 0 warnings, 1 info
 ```
 
-## Why
+## Does it catch what a client wouldn't?
 
-A broken MCP server usually does not look broken. It starts, it completes the handshake, the client lists it as **Connected** — and the model never calls anything, because the tool surface is empty, a schema doesn't compile, or a `required` field names a property that isn't there. Nothing errors. You just get worse answers.
+The fixture above speaks raw JSON-RPC instead of using the TypeScript SDK, on purpose: the SDK
+validates what it sends and would refuse to serve most of these faults. Python, Go and hand-written
+servers have no such guard. Every fault in it is one a real server can ship without noticing, and
+none of them breaks the handshake. CI runs the built CLI against it on every push and fails if it
+exits zero, and against a healthy fixture that must exit zero.
 
-`mcp-surface` connects the way a real client does and reports what it actually sees.
+<!-- PENDING W1: the Zod 3→4 regression story. Supervisor ruling: publish only if W1
+substantiates it; otherwise drop it entirely, no softened version. -->
 
-## Install
+The suite is 54 tests in three files, all passing. The end-to-end tests drive the two fixture
+servers over real stdio, not mocks — but they are local fixtures, not third-party servers, so what
+it misses on servers in the wild is only known from reports. If it passes a server your client
+cannot use, or flags one that works, the **wrong verdict** issue template asks for exactly what is
+needed to fix it.
+
+## How it works
+
+### Connecting
+
+The target is a command (stdio) or a URL (Streamable HTTP, or SSE with `--transport sse`). The
+client declares no capabilities of its own, so a server that gates tools behind client capabilities
+still shows its unconditional set. A stdio server's stderr is captured rather than inherited, so a
+chatty server doesn't write its logs into the report; it is shown only when the probe fails. The
+client identifies itself in `initialize` with the real package version. Each request times out
+after 20,000 ms unless `--timeout` says otherwise. ([`connect.ts`](src/connect.ts),
+[`cli.ts`](src/cli.ts))
+
+### Reading the surface
+
+Each list — tools, resources, prompts — is requested only if the server declared that capability,
+and paged until the server stops returning a cursor, or returns the same cursor twice. A list the
+server declared but that then throws is recorded as a finding, not a crash, and the other lists are
+still read. Malformed entries are coerced into shape without being dropped: a tool with a numeric
+name or no schema still has to reach the checks, because reporting it is the point.
+([`probe.ts`](src/probe.ts))
+
+### Checks
+
+Every rule is a pure function from the surface to a list of findings, grouped by area:
+`schema.ts` (valid JSON Schema, object root, satisfiable `required`), `naming.ts` (characters
+clients rewrite, case collisions, duplicates), `surface.ts` (empty surface, size heuristics),
+`mutation.ts` (tools that look like they change state but declare no annotations) and `calls.ts`.
+A rule that throws becomes a finding, so one bad rule doesn't cost the rest. Spec violations are
+errors; heuristics are warnings or info, and name the signal that triggered them.
+([`checks/`](src/checks/index.ts))
+
+### Snapshots
+
+`--update-snapshot` records the surface; `--snapshot` compares against it. Keys and tools are
+sorted, so a server that serialises its schema from a `Map` doesn't produce a diff on every run.
+The server's own version is left out of the comparison: a release bump is not a surface change, and
+failing CI on it teaches people to re-record without reading. A UTF-8 BOM, which Windows editors and
+PowerShell's `Set-Content -Encoding utf8` prepend, is stripped before parsing.
+([`snapshot.ts`](src/snapshot.ts))
+
+### Calling tools
+
+`--call` invokes tools after the whole surface has been read, so a tool that hangs or crashes the
+server still leaves a complete report. A tool is called only when it declares
+`readOnlyHint: true` **and** takes no required arguments. Absence of an annotation is not consent,
+and inventing plausible arguments for someone else's API is how you end up calling
+`delete_user({ id: "test" })`. There is no flag to loosen either condition. Everything else is
+listed as skipped, with the reason. ([`probe.ts`](src/probe.ts), [`calls.ts`](src/checks/calls.ts))
+
+## Reading the list the SDK would reject
+
+<!-- FACT needed (W1): the measurement for this section — the SDK's ListToolsResultSchema run
+against broken-server.js's tools/list response (what it returns or throws), next to the number of
+tools mcp-surface reports individually from the same response. -->
+`client.listTools()` validates the response against the SDK's strict `ListToolsResultSchema`. One
+malformed tool fails that validation, and the whole list goes with it, so a checker built on it can
+only say "the response failed to parse" — for exactly the servers that need checking.
+`mcp-surface` sends `tools/list` with a schema that accepts any object, keeps every entry, and lets
+its own rules say which tool is broken and how.
+
+The cost is that it has to do the SDK's job itself, defensively: names that aren't strings,
+schemas that aren't objects, and `$ref` properties — a property defined by `$ref` has no inline
+`description`, and was wrongly reported as undocumented until 0.1.2.
+
+## Running it
+
+<!-- PENDING W1: engines change drops Node 20 -->
+Node 20.19 or newer.
 
 ```sh
-npx mcp-surface <target>          # no install
-npm install -D mcp-surface        # in a project
-```
-
-Requires Node 20.19+.
-
-## Usage
-
-The target is either a command that starts a local server, or the URL of a remote one.
-
-```sh
-mcp-surface node ./src/index.js              # stdio
-mcp-surface npx -y @scope/some-mcp-server    # stdio, from npm
-mcp-surface https://example.com/mcp          # Streamable HTTP
-mcp-surface https://example.com/sse --transport sse
+mcp-surface node ./src/index.js                     # stdio
+mcp-surface npx -y @scope/some-mcp-server           # stdio, from npm
+mcp-surface https://example.com/mcp                 # Streamable HTTP
+mcp-surface https://example.com/sse --transport sse # SSE
+mcp-surface node ./src/index.js --snapshot mcp-surface.json --update-snapshot   # record; commit this
+mcp-surface node ./src/index.js --snapshot mcp-surface.json                     # verify in CI
+mcp-surface node ./src/index.js --call              # also invoke the tools that are safe to call
 ```
 
 | Option | |
 |---|---|
-| `--transport <kind>` | Force `stdio`, `http`, or `sse` instead of inferring from the target |
+| `--transport <kind>` | `stdio`, `http` or `sse`; inferred from the target by default |
 | `--cwd <dir>` | Working directory for a stdio server |
 | `-e, --env KEY=VALUE` | Environment variable for a stdio server (repeatable) |
 | `-H, --header KEY=VALUE` | HTTP header for a remote server (repeatable) |
@@ -68,53 +153,53 @@ mcp-surface https://example.com/sse --transport sse
 | `--max-definition-bytes <n>` | Warn when tool definitions exceed this (default 16384) |
 | `--max-description-chars <n>` | Note descriptions longer than this (default 1024) |
 | `--call` | Also invoke each tool that is safe to call, and report the result |
-| `--fail-on <level>` | Exit non-zero at `error` (default), `warn`, or `info` |
+| `--fail-on <level>` | Exit non-zero at `error` (default), `warn` or `info` |
 | `--json` | Machine-readable output |
 | `--json-out <file>` | Write JSON to a file while keeping the readable report on stdout |
 
-### Exit codes
+Exit codes: `0` clean; `1` findings at or above `--fail-on`, or the snapshot didn't match; `2` the
+server could not be probed at all. Connection failure is kept separate on purpose — "the server
+wouldn't start" and "the server started and its schemas are wrong" want different responses in CI.
 
-| | |
-|---|---|
-| `0` | Clean |
-| `1` | Findings at or above `--fail-on`, or the snapshot didn't match |
-| `2` | Could not probe the server at all |
+Tool listing doesn't need credentials on most servers — auth is enforced when a tool is called,
+not when it is listed — so a server can usually be checked in CI without secrets. Pass `-e` or `-H`
+if yours needs them to start.
 
-Connection failure is deliberately separate from surface problems: in CI, "the server wouldn't start" and "the server started and its schemas are wrong" want different responses.
+### Checks
 
-## Snapshot testing
+| Rule | Level | |
+|---|---|---|
+| `empty-surface` | error | Connected, but advertises nothing |
+| `list-failed` | error | A capability was declared in `initialize`, but its list call threw |
+| `schema-valid` | error | An `inputSchema` or `outputSchema` isn't valid JSON Schema |
+| `schema-missing` | error | A tool has no `inputSchema`, which the spec requires |
+| `schema-root-type` | error | Schema root `type` isn't `"object"`, which MCP requires |
+| `schema-required-props` | error | `required` names a property that isn't in `properties` |
+| `tool-duplicate-name` | error | Two tools share a name; only one is reachable |
+| `tool-naming` | warn | Name outside `[A-Za-z0-9_-]`, which some clients rewrite or reject |
+| `tool-name-case-collision` | warn | Names that differ only by case |
+| `tool-description-missing` | warn | The model has only the name to go on |
+| `tool-annotations` | warn | Both `readOnlyHint` and `destructiveHint` set |
+| `mutation-annotations` | warn | Looks like it changes state, declares no annotations |
+| `tool-call-error` | error | `--call` only: an eligible tool returned `isError` |
+| `tool-call-threw` | error | `--call` only: the call failed at the protocol level |
+| `tool-call-none-eligible` | info | `--call` only: no tool met both conditions |
+| `surface-tool-count` | warn | More tools than `--max-tools` |
+| `surface-token-cost` | warn | Definitions larger than `--max-definition-bytes` |
+| `tool-description-long` | info | A description longer than `--max-description-chars` |
+| `schema-property-descriptions` | info | Input properties with no description |
 
-The failure this catches: you refactor, a tool quietly stops being registered, every test still passes because none of them assert on the *surface*, and the regression ships.
+`mutation-annotations` exists because clients that offer "auto-approve read-only tools" decide by
+reading `readOnlyHint`. With no annotations, a tool that posts publicly and one that reads a profile
+look the same, so either everything gets a prompt or nothing does. It guesses from names and
+descriptions, so it warns rather than errors, names the signal it used, and respects verb order:
+`get_post` reads, `post_comment` writes.
 
-```sh
-mcp-surface node ./src/index.js --snapshot mcp-surface.json --update-snapshot   # record, commit this
-mcp-surface node ./src/index.js --snapshot mcp-surface.json                     # verify in CI
-```
+The three size limits are heuristics, not spec requirements. The defaults — 40 tools, 16,384 bytes
+of definitions, 1,024 characters per description — are a starting point, not a measurement of
+anyone's workload; tune them to your server. ([`types.ts`](src/types.ts))
 
-It catches quieter changes too. Upgrading Zod from 3 to 4 in [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) passed all 30 of its unit tests, and changed the schema of every tool it has — Zod 4 stopped closing objects to extra properties and added a long pattern to every email field:
-
-```console
-$ npm run -s surface
-
-google-workspace 2.0.0 (298ms)
-23 tools · 0 resources · 0 prompts · capabilities: tools
-  …
-  warn   Tool definitions total ~16.6 KB, over the limit of 16.0 KB, and are resent on every request (--max-definition-bytes) [surface-token-cost]
-
-Snapshot mcp-surface.json
-  ~ tool calendar_create_event: inputSchema changed
-  ~ tool calendar_delete_event: inputSchema changed
-  ~ tool calendar_list_events: inputSchema changed
-  …
-  ~ tool youtube_subscribe: inputSchema changed
-  Run with --update-snapshot if these changes are intended.
-
-0 errors, 1 warning, 0 info
-```
-
-Snapshots are canonicalised — keys and tools are sorted, so reordering never produces a spurious diff. The server *version* is excluded on purpose: a release bump is not a surface change, and failing CI on it just teaches people to re-record reflexively, which defeats the point.
-
-## In GitHub Actions
+### In GitHub Actions
 
 ```yaml
 - uses: brettadams0/mcp-surface@v0
@@ -123,70 +208,9 @@ Snapshots are canonicalised — keys and tools are sorted, so reordering never p
     snapshot: mcp-surface.json
 ```
 
-Or plainly:
+or `- run: npx mcp-surface node ./src/index.js --snapshot mcp-surface.json`.
 
-```yaml
-- run: npx mcp-surface node ./src/index.js --snapshot mcp-surface.json
-```
-
-## Actually calling tools
-
-Everything above inspects what a server *advertises*. `--call` goes one step further and invokes tools, so you find out whether they work rather than whether they're well-formed.
-
-```console
-$ mcp-surface node ./test/fixtures/healthy-server.js --call
-  ⋮
-Calls
-  ok    status 3ms
-  2 tool(s) not eligible to call
-```
-
-**A tool is only called when both are true**, and there is no flag to loosen this:
-
-1. It declares `annotations.readOnlyHint: true`. Absence is not consent — an unannotated tool is precisely the ambiguous case.
-2. It takes no required arguments. Inventing plausible values for someone else's API is how you end up calling `delete_user({ id: "test" })`.
-
-Everything else is reported as skipped, with the reason. A tool that satisfies both conditions and *still* fails is a real defect: it either doesn't work or its annotations are wrong.
-
-This pairs with `mutation-annotations` — annotate your server honestly, and `--call` gets a safe set to exercise for free.
-
-## Checks
-
-| Rule | Level | |
-|---|---|---|
-| `empty-surface` | error | Server connected but advertises nothing — the "Connected, but no tools" failure |
-| `list-failed` | error | A capability was declared in `initialize` but its list call threw |
-| `schema-valid` | error | A tool's `inputSchema`/`outputSchema` isn't valid JSON Schema |
-| `schema-missing` | error | A tool has no `inputSchema`, which the spec requires |
-| `schema-root-type` | error | Schema root `type` isn't `"object"`, which MCP requires |
-| `schema-required-props` | error | `required` names a property that isn't in `properties` — unsatisfiable |
-| `tool-duplicate-name` | error | Two tools share a name; only one is reachable |
-| `tool-naming` | warn | Name outside `[A-Za-z0-9_-]`, which some clients rewrite or reject |
-| `tool-name-case-collision` | warn | Names differing only by case |
-| `tool-description-missing` | warn | The model has only the name to go on |
-| `tool-annotations` | warn | Both `readOnlyHint` and `destructiveHint` set |
-| `mutation-annotations` | warn | Tool appears to change state but declares no annotations |
-| `tool-call-error` | error | `--call` only — an eligible tool returned `isError` |
-| `tool-call-threw` | error | `--call` only — the call failed at the protocol level |
-| `tool-call-none-eligible` | info | `--call` only — no tool met both safety conditions |
-| `surface-tool-count` | warn | More tools than `--max-tools` (default 40) |
-| `surface-token-cost` | warn | Definitions exceed `--max-definition-bytes` (default 16 KB) |
-| `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
-| `schema-property-descriptions` | info | Input properties with no description |
-
-Silence any of them with `--skip <rule>`.
-
-### Why `mutation-annotations` matters
-
-A client that offers "auto-approve read-only tools" decides by reading `annotations.readOnlyHint`. When a server declares no annotations at all, a tool that posts publicly and a tool that reads a profile are indistinguishable — so either everything gets a confirmation prompt, or nothing does.
-
-The check guesses from names and descriptions, so it warns rather than errors and always names the signal that triggered it. It respects verb order: `get_post` reads, `post_comment` writes. Silence it with `--skip mutation-annotations`.
-
-The three size limits are **heuristics, not spec requirements**, and the defaults are a starting point rather than a measurement of your workload — a server whose tools are short and unambiguous can carry more of them than one with sprawling schemas. Tune them to your own server and treat the warning as a prompt to check, not a verdict.
-
-## Use it as a library
-
-Useful when you'd rather assert on the surface from inside an existing test suite.
+### As a library
 
 ```ts
 import { parseTarget, probe, runChecks } from 'mcp-surface';
@@ -198,30 +222,56 @@ expect(errors).toEqual([]);
 expect(result.surface.tools.map((t) => t.name)).toContain('get_weather');
 ```
 
-## Notes
+### Used by
 
-Tool listing does not require credentials on most servers — auth is enforced when a tool is *called*, not when it's listed — so you can usually smoke-test a server in CI without secrets. Pass `-e` or `-H` if yours needs them to start.
-
-`mcp-surface` deliberately bypasses the SDK's response validation when reading the surface. The SDK's strict `ListToolsResultSchema` rejects the *entire* list if one tool is malformed, which would reduce every report to "the response failed to parse" for precisely the servers worth checking. Reading the raw result and judging it here is what lets the report say *which* tool is broken and *how*. Servers built on the TypeScript SDK can't emit some of these faults at all, since it validates on the way out — but Python, Go, and hand-rolled servers have no such guard.
-
-Built against `@modelcontextprotocol/sdk` 1.x, which is what the current server ecosystem uses.
-
-## Used by
-
-Each of these servers runs `mcp-surface` in CI against a committed snapshot, so
-renaming a tool, rewording its description, changing its schema or dropping an
-annotation shows up as a diff in the pull request that caused it — not as a
-quieter model a week later.
+<!-- FACT needed (W1): tool counts from each server's committed mcp-surface.json. -->
+Each of these runs `mcp-surface` in CI against a committed snapshot, so renaming a tool, rewording
+its description, changing its schema or dropping an annotation shows up as a diff in the pull
+request that caused it.
 
 | Server | Tools | Auth model |
 |---|---|---|
 | [google-workspace-mcp](https://github.com/brettadams0/google-workspace-mcp) | 23 | Self-owned Google OAuth client, no restricted scopes |
 | [reddit-mcp](https://github.com/brettadams0/reddit-mcp) | 12 | OAuth2, non-rotating refresh token |
 
-## Changelog
+## Development
 
-See [CHANGELOG.md](CHANGELOG.md).
+```sh
+npm ci
+npm run typecheck
+npm test                                                # vitest
+npm run build
+
+node dist/cli.js node test/fixtures/healthy-server.js  # must exit 0
+node dist/cli.js node test/fixtures/broken-server.js   # must exit non-zero
+```
+
+<!-- PENDING W1: matrix after the engines change -->
+CI runs that on Node 20.19, 22 and 24, then packs the tarball npm would publish, installs it into
+an empty project, and runs its bin against the healthy fixture — which catches a `files` list or
+`bin` path that works from the checkout but not from the registry.
+
+The compiler moved from TypeScript 5.9.3 to 7.0.2 with no change to what ships: the emitted
+`dist/*.js` and `dist/*.d.ts` are byte-identical between the two. Only the source maps differ.
+
+A new check gets a fault in `broken-server.js` that trips it, a test, and a row in the table above.
+While the version is `0.x`, a minor release may change the CLI or the JSON report; see
+[CHANGELOG.md](CHANGELOG.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Layout
+
+| | |
+|---|---|
+| [`src/cli.ts`](src/cli.ts) | flags, exit codes, report output; no checking logic |
+| [`src/connect.ts`](src/connect.ts) | target parsing, transports, the `initialize` handshake |
+| [`src/probe.ts`](src/probe.ts) | reads every list raw, and runs `--call`; never judges what it reads |
+| [`src/checks/`](src/checks/index.ts) | the rules, one file per area; pure functions, no I/O |
+| [`src/snapshot.ts`](src/snapshot.ts) | canonicalise, diff, read and write snapshots |
+| [`src/report.ts`](src/report.ts) | text and `--json` output; the JSON shape is part of the CLI contract |
+| [`src/version.ts`](src/version.ts) | the package version, read from `package.json`, never a literal |
+| [`test/fixtures/`](test/fixtures) | a healthy and a broken server, both raw JSON-RPC over stdio |
+| [`action.yml`](action.yml) | the composite GitHub Action |
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
