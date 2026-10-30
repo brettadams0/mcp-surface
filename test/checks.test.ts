@@ -543,6 +543,14 @@ describe('v1 snapshots', () => {
     );
   });
 
+  it('rejects a current-version file that drops a field', async () => {
+    const { resourceTemplates: _t, ...partial } = toSnapshot(surface());
+    const path = await writeTemp(partial);
+    await expect(readSnapshot(path)).rejects.toThrow(
+      `Snapshot at ${path} is version 2 but is missing resourceTemplates or prompt arguments. Re-record it with --update-snapshot.`
+    );
+  });
+
   it('rejects a file with no version', async () => {
     const { snapshotVersion: _v, ...unversioned } = v1();
     const path = await writeTemp(unversioned);

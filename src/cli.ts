@@ -174,7 +174,8 @@ async function main(): Promise<number> {
           `No snapshot at ${opts.snapshot}. Create it with --snapshot ${opts.snapshot} --update-snapshot.`
         );
       }
-      if (isOutdatedSnapshot(recorded) && !opts.json) {
+      // stderr even with --json, so the reduced coverage is never silent.
+      if (isOutdatedSnapshot(recorded)) {
         process.stderr.write(
           `${pc.yellow('Snapshot is version ' + recorded.snapshotVersion)} ${pc.dim(opts.snapshot)} — resource templates and prompt arguments were not recorded, so changes to them are not checked. Re-record with --update-snapshot to cover them.
 `

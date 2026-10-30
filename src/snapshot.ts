@@ -149,11 +149,14 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
     b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null
   );
 
-  // A v1 snapshot never recorded templates. Comparing against an empty list
-  // would report every template the server has as newly added.
-  if (before.resourceTemplates !== undefined) {
+  // Keyed on the recorded version, not on whether the field is present, so a
+  // current-version file cannot opt out of a comparison by omitting it
+  // (readSnapshot also rejects that). A v1 file never recorded templates;
+  // comparing against an empty list would report every template as added.
+  const recordedEverything = !isOutdatedSnapshot(before);
+  if (recordedEverything) {
     diffKeyed(
-      before.resourceTemplates,
+      before.resourceTemplates ?? [],
       after.resourceTemplates ?? [],
       (t) => t.uriTemplate,
       'resource template',
@@ -167,8 +170,8 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
     if (b.description !== a.description) parts.push('description');
     // Compared as a whole so a reorder, rename, or required-flag flip all show
     // up — each of those breaks callers.
-    // Skipped when the recorded side has no arguments field (v1), as above.
-    if (b.arguments !== undefined && JSON.stringify(b.arguments) !== JSON.stringify(a.arguments ?? [])) {
+    // Skipped for a v1 file, which never recorded arguments.
+    if (recordedEverything && JSON.stringify(b.arguments ?? []) !== JSON.stringify(a.arguments ?? [])) {
       parts.push('arguments');
     }
     return parts.length > 0 ? `${parts.join(', ')} changed` : null;
@@ -231,6 +234,18 @@ export async function readSnapshot(path: string): Promise<Snapshot | null> {
   ) {
     throw new Error(
       `Snapshot at ${path} is version ${parsed.snapshotVersion}, this build reads versions ${MIN_SNAPSHOT_VERSION}-${SNAPSHOT_VERSION}. Re-record it with --update-snapshot.`
+    );
+  }
+  // A current-version file must carry every field, or a hand edit that drops
+  // one would quietly switch that comparison off.
+  if (
+    parsed.snapshotVersion === SNAPSHOT_VERSION &&
+    (!Array.isArray(parsed.resourceTemplates) ||
+      !Array.isArray(parsed.prompts) ||
+      parsed.prompts.some((p) => !Array.isArray(p.arguments)))
+  ) {
+    throw new Error(
+      `Snapshot at ${path} is version ${SNAPSHOT_VERSION} but is missing resourceTemplates or prompt arguments. Re-record it with --update-snapshot.`
     );
   }
   return parsed;
