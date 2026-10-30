@@ -141,7 +141,7 @@ Measured against the same `tools/list` response from the broken fixture, using S
 | SDK `Client.listTools()` | **0 of 5** | — |
 | `mcp-surface` | **5 of 5** | 4 (4 errors, 1 info) |
 
-The SDK throws on the first issue, `tools.1.inputSchema.type: expected "object"`, and returns
+The SDK throws on the first issue, `tools.1.inputSchema.type: Invalid input: expected "object"`, and returns
 nothing. The fixture is broken on purpose, so this shows the mechanism, not how often real servers
 hit it. To reproduce:
 
