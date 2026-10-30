@@ -10,6 +10,12 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Types track the engines floor (>=22.12), not the newest runtime: newer
+      # @types/node would typecheck calls that throw on the Node we support.
+      # Move this together with engines.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /

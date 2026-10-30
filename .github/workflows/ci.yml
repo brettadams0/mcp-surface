@@ -5,13 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: ['20.19', '22', '24']
+        node: ['22.12', '22', '24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,3 +36,16 @@ jobs:
             echo "::error::Expected a non-zero exit for the broken fixture"
             exit 1
           fi
+
+      # Install the tarball npm would publish into an empty project and run its
+      # bin. Catches a `files` list or `bin` path that works from the repo
+      # checkout but not from the registry.
+      - name: Smoke-test the packed tarball
+        run: |
+          set -euo pipefail
+          tarball="$PWD/$(npm pack --silent)"
+          consumer="$(mktemp -d)"
+          cd "$consumer"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --silent "$tarball"
+          npx --no-install mcp-surface node "$GITHUB_WORKSPACE/test/fixtures/healthy-server.js"
