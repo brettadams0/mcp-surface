@@ -1,0 +1,24 @@
+name: Bug
+description: mcp-surface crashed, hung, or the CLI or Action misbehaved.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: mcp-surface version and Node version
+      placeholder: "0.3.0, Node 22.11"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The exact command or workflow step, and the output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true

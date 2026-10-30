@@ -1,0 +1,41 @@
+name: Wrong verdict
+description: mcp-surface passed a server a client could not use, or flagged one that works.
+labels: [checks]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which way
+      options:
+        - Missed a problem (the server broke in a client and mcp-surface passed it)
+        - False alarm (mcp-surface flagged something that works)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mcp-surface version
+      description: "`mcp-surface --version`"
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: The command or URL you probed, and the server's language or SDK if you know it.
+      placeholder: "npx -y @scope/some-mcp-server (Python, FastMCP)"
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: "`mcp-surface <target> --json`. Remove anything secret passed with -e or -H."
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: client
+    attributes:
+      label: What the client did
+      description: For a missed problem, which client, and what it showed or failed to do.
