@@ -23,24 +23,13 @@ npm install -D mcp-surface               # in a project; Node 22.12 or newer
 Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a server that completes
 the handshake and that any client would show as connected:
 
-```console
-$ npx mcp-surface node ./broken-server.js
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.svg">
+  <img src="docs/demo-light.svg" width="720" height="575" alt="A terminal recording. The command 'mcp-surface node test/fixtures/broken-server.js' is typed. The tool connects to a server named broken-fixture in about 150 ms and lists its 5 tools, then prints four red errors: wrong_root_type's input schema is an array where MCP requires an object; bad_schema's input schema is not valid JSON Schema; unsatisfiable requires an 'apiKey' argument its schema never defines; and 'duplicate' is advertised twice, so only one is reachable. It finishes with '4 errors, 0 warnings, 1 info' and exit 1.">
+</picture>
 
-broken-fixture 1.0.0 (56ms)
-5 tools · 0 resources · 0 prompts · capabilities: tools
-
-  unsatisfiable — Requires an argument that its schema never defines.
-  wrong_root_type — Declares an array where the spec requires an object.
-  …
-
-  error  wrong_root_type inputSchema.type is "array", but MCP requires "object" [schema-root-type]
-  error  bad_schema inputSchema is not valid JSON Schema: … [schema-valid]
-  error  unsatisfiable inputSchema.required lists "apiKey" with no matching entry in properties — those arguments can never be satisfied [schema-required-props]
-  error  duplicate Advertised 2 times — only one of them is reachable by a client [tool-duplicate-name]
-  info   bad_schema 1 input property has no description: count [schema-property-descriptions]
-
-4 errors, 0 warnings, 1 info
-```
+The recording is the real CLI run against the fixture: `npm run build && node tools/record-demo.mjs`
+regenerates it, and only the connect time in its header changes between runs.
 
 ## Does it catch what a client wouldn't?
 
