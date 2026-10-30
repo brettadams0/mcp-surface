@@ -47,5 +47,5 @@ jobs:
           consumer="$(mktemp -d)"
           cd "$consumer"
           npm init -y >/dev/null
-          npm install --silent "$tarball"
+          npm install --ignore-scripts --silent "$tarball"
           npx --no-install mcp-surface node "$GITHUB_WORKSPACE/test/fixtures/healthy-server.js"
