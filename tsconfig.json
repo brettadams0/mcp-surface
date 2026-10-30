@@ -2,6 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
+    // TypeScript 7 no longer loads every @types package by default; without
+    // this, Buffer, process and the node: imports fail to resolve.
+    "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": "src",
