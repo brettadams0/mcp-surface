@@ -7,7 +7,7 @@ TypeScript SDK, is worth more than a hypothetical one.
 
 ## Setup
 
-Node 20.19 or newer. CI runs 20.19, 22 and 24.
+Node 22.12 or newer. CI runs 22.12, 22 and 24.
 
 ```sh
 npm ci
