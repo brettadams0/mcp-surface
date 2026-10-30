@@ -13,6 +13,7 @@ import {
   diffSnapshots,
   isEmptyDiff,
   readSnapshot,
+  isOutdatedSnapshot,
   toSnapshot,
   writeSnapshot
 } from './snapshot.js';
@@ -171,6 +172,12 @@ async function main(): Promise<number> {
       if (recorded === null) {
         throw new Error(
           `No snapshot at ${opts.snapshot}. Create it with --snapshot ${opts.snapshot} --update-snapshot.`
+        );
+      }
+      if (isOutdatedSnapshot(recorded) && !opts.json) {
+        process.stderr.write(
+          `${pc.yellow('Snapshot is version ' + recorded.snapshotVersion)} ${pc.dim(opts.snapshot)} — resource templates and prompt arguments were not recorded, so changes to them are not checked. Re-record with --update-snapshot to cover them.
+`
         );
       }
       diff = diffSnapshots(recorded, current);

@@ -1,6 +1,15 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runChecks } from '../src/checks/index.js';
-import { diffSnapshots, toSnapshot } from '../src/snapshot.js';
+import {
+  diffSnapshots,
+  isOutdatedSnapshot,
+  readSnapshot,
+  toSnapshot,
+  type Snapshot
+} from '../src/snapshot.js';
 import type { Surface, ToolSurface } from '../src/types.js';
 
 const tool = (over: Partial<ToolSurface> = {}): ToolSurface => ({
@@ -463,5 +472,82 @@ describe('snapshots', () => {
     const before = toSnapshot(surface());
     const after = toSnapshot(surface({ server: { name: 'renamed', version: '1.0.0' } }));
     expect(diffSnapshots(before, after).changed[0]?.subject).toBe('server.name');
+  });
+});
+
+// Every action user with a committed snapshot runs `mcp-surface@latest`, so
+// rejecting a v1 file would fail their CI on the day v2 is published.
+describe('v1 snapshots', () => {
+  /** What 0.3.0 wrote: no resourceTemplates, no prompt arguments. */
+  const v1 = (over: Partial<Snapshot> = {}): Snapshot => {
+    const { resourceTemplates: _t, ...rest } = toSnapshot(
+      surface({ prompts: [{ name: 'summarize', description: 'Summarize.' }] })
+    );
+    return {
+      ...rest,
+      snapshotVersion: 1,
+      prompts: rest.prompts.map(({ arguments: _a, ...p }) => p),
+      ...over
+    };
+  };
+
+  const writeTemp = async (body: unknown): Promise<string> => {
+    const dir = await mkdtemp(join(tmpdir(), 'mcp-surface-'));
+    const path = join(dir, 'mcp-surface.json');
+    await writeFile(path, JSON.stringify(body), 'utf8');
+    return path;
+  };
+
+  it('reads a v1 file and flags it as outdated', async () => {
+    const read = await readSnapshot(await writeTemp(v1()));
+    expect(read?.snapshotVersion).toBe(1);
+    expect(isOutdatedSnapshot(read as Snapshot)).toBe(true);
+    expect(isOutdatedSnapshot(toSnapshot(surface()))).toBe(false);
+  });
+
+  it('does not report templates a v1 file never recorded as added', () => {
+    const after = toSnapshot(
+      surface({
+        resourceTemplates: [{ uriTemplate: 'file:///{id}.txt', name: 'T' }],
+        prompts: [{ name: 'summarize', description: 'Summarize.' }]
+      })
+    );
+    expect(diffSnapshots(v1(), after)).toEqual({ added: [], removed: [], changed: [] });
+  });
+
+  it('does not compare prompt arguments a v1 file never recorded', () => {
+    const after = toSnapshot(
+      surface({
+        prompts: [{ name: 'summarize', description: 'Summarize.', arguments: [{ name: 'text' }] }]
+      })
+    );
+    expect(diffSnapshots(v1(), after).changed).toEqual([]);
+  });
+
+  it('still catches a tool change against a v1 file', () => {
+    const after = toSnapshot(
+      surface({
+        tools: [tool({ inputSchema: { type: 'object', properties: {} } })],
+        prompts: [{ name: 'summarize', description: 'Summarize.' }]
+      })
+    );
+    expect(diffSnapshots(v1(), after).changed).toEqual([
+      { subject: 'tool get_thing', detail: 'inputSchema changed' }
+    ]);
+  });
+
+  it('rejects a version newer than this build writes', async () => {
+    const path = await writeTemp({ ...v1(), snapshotVersion: 3 });
+    await expect(readSnapshot(path)).rejects.toThrow(
+      `Snapshot at ${path} is version 3, this build reads versions 1-2. Re-record it with --update-snapshot.`
+    );
+  });
+
+  it('rejects a file with no version', async () => {
+    const { snapshotVersion: _v, ...unversioned } = v1();
+    const path = await writeTemp(unversioned);
+    await expect(readSnapshot(path)).rejects.toThrow(
+      `Snapshot at ${path} is version undefined, this build reads versions 1-2. Re-record it with --update-snapshot.`
+    );
   });
 });

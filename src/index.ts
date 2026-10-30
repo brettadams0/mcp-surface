@@ -12,6 +12,8 @@ export {
   readSnapshot,
   writeSnapshot,
   SNAPSHOT_VERSION,
+  MIN_SNAPSHOT_VERSION,
+  isOutdatedSnapshot,
   type Snapshot,
   type SnapshotDiff
 } from './snapshot.js';

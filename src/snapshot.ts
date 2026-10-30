@@ -3,11 +3,16 @@ import { dirname } from 'node:path';
 import type { Surface } from './types.js';
 
 /**
- * 2 — added resourceTemplates, and prompt arguments. A v1 file records neither,
- * so it would silently pass a prompt whose signature had changed. `readSnapshot`
- * rejects the old version and tells you to re-record rather than guessing.
+ * 2 — added resourceTemplates, and prompt arguments. A v1 file records neither.
+ * `readSnapshot` still accepts v1 and `diffSnapshots` skips what it did not
+ * record, because rejecting it would fail every CI job that runs the action at
+ * `latest` the moment this version is published — the unintended break this
+ * tool exists to catch. The CLI prints a re-record hint instead.
  */
 export const SNAPSHOT_VERSION = 2;
+
+/** Oldest snapshot version `readSnapshot` will still compare against. */
+export const MIN_SNAPSHOT_VERSION = 1;
 
 export interface Snapshot {
   snapshotVersion: number;
@@ -21,13 +26,15 @@ export interface Snapshot {
     annotations?: Record<string, unknown>;
   }>;
   resources: Array<{ uri: string; name: string; mimeType?: string }>;
-  resourceTemplates: Array<{ uriTemplate: string; name: string; mimeType?: string }>;
+  /** Absent in v1 snapshots: not recorded, so not compared. */
+  resourceTemplates?: Array<{ uriTemplate: string; name: string; mimeType?: string }>;
   prompts: Array<{
     name: string;
     description: string;
     // Recorded because changing a prompt's arguments breaks every caller, which
     // is exactly the silent break a snapshot exists to catch.
-    arguments: Array<{ name: string; description: string; required: boolean }>;
+    // Absent in v1 snapshots: not recorded, so not compared.
+    arguments?: Array<{ name: string; description: string; required: boolean }>;
   }>;
 }
 
@@ -142,21 +149,28 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
     b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null
   );
 
-  diffKeyed(
-    before.resourceTemplates ?? [],
-    after.resourceTemplates ?? [],
-    (t) => t.uriTemplate,
-    'resource template',
-    diff,
-    (b, a) => (b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null)
-  );
+  // A v1 snapshot never recorded templates. Comparing against an empty list
+  // would report every template the server has as newly added.
+  if (before.resourceTemplates !== undefined) {
+    diffKeyed(
+      before.resourceTemplates,
+      after.resourceTemplates ?? [],
+      (t) => t.uriTemplate,
+      'resource template',
+      diff,
+      (b, a) => (b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null)
+    );
+  }
 
   diffKeyed(before.prompts, after.prompts, (p) => p.name, 'prompt', diff, (b, a) => {
     const parts: string[] = [];
     if (b.description !== a.description) parts.push('description');
     // Compared as a whole so a reorder, rename, or required-flag flip all show
     // up — each of those breaks callers.
-    if (JSON.stringify(b.arguments ?? []) !== JSON.stringify(a.arguments ?? [])) parts.push('arguments');
+    // Skipped when the recorded side has no arguments field (v1), as above.
+    if (b.arguments !== undefined && JSON.stringify(b.arguments) !== JSON.stringify(a.arguments ?? [])) {
+      parts.push('arguments');
+    }
     return parts.length > 0 ? `${parts.join(', ')} changed` : null;
   });
 
@@ -210,13 +224,20 @@ export async function readSnapshot(path: string): Promise<Snapshot | null> {
     );
   }
 
-  if (parsed.snapshotVersion !== SNAPSHOT_VERSION) {
+  if (
+    typeof parsed.snapshotVersion !== 'number' ||
+    parsed.snapshotVersion < MIN_SNAPSHOT_VERSION ||
+    parsed.snapshotVersion > SNAPSHOT_VERSION
+  ) {
     throw new Error(
-      `Snapshot at ${path} is version ${parsed.snapshotVersion}, this build writes version ${SNAPSHOT_VERSION}. Re-record it with --update-snapshot.`
+      `Snapshot at ${path} is version ${parsed.snapshotVersion}, this build reads versions ${MIN_SNAPSHOT_VERSION}-${SNAPSHOT_VERSION}. Re-record it with --update-snapshot.`
     );
   }
   return parsed;
 }
+
+/** True for a snapshot older than this build writes; some fields went unrecorded. */
+export const isOutdatedSnapshot = (s: Snapshot): boolean => s.snapshotVersion < SNAPSHOT_VERSION;
 
 export async function writeSnapshot(path: string, snapshot: Snapshot): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
