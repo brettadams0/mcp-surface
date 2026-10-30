@@ -15,6 +15,7 @@ const surface = (over: Partial<Surface> = {}): Surface => ({
   capabilities: { tools: {} },
   tools: [tool()],
   resources: [],
+  resourceTemplates: [],
   prompts: [],
   listErrors: [],
   ...over
@@ -155,6 +156,117 @@ describe('descriptions and annotations', () => {
   it('warns past the tool-count soft limit', () => {
     const many = Array.from({ length: 41 }, (_, i) => tool({ name: `tool_${i}` }));
     expect(find(surface({ tools: many }), 'surface-tool-count')?.level).toBe('warn');
+  });
+});
+
+describe('resources', () => {
+  const res = (over = {}) => ({
+    uri: 'file:///a.txt',
+    name: 'A',
+    description: 'A file.',
+    mimeType: 'text/plain',
+    ...over
+  });
+
+  it('is quiet for a fully specified resource', () => {
+    expect(rules(surface({ resources: [res()] }))).toEqual([]);
+  });
+
+  it('errors on a missing uri', () => {
+    expect(find(surface({ resources: [res({ uri: '' })] }), 'resource-uri-missing')?.level).toBe('error');
+  });
+
+  it('errors on a duplicate uri', () => {
+    const s = surface({ resources: [res(), res({ name: 'B' })] });
+    expect(find(s, 'resource-duplicate-uri')?.level).toBe('error');
+  });
+
+  it('warns on a uri with no scheme', () => {
+    expect(find(surface({ resources: [res({ uri: 'a.txt' })] }), 'resource-uri-malformed')?.level).toBe('warn');
+  });
+
+  it('accepts a custom scheme', () => {
+    expect(rules(surface({ resources: [res({ uri: 'myapp+v2://thing/1' })] }))).toEqual([]);
+  });
+
+  it('warns on a missing name, notes missing description and mimeType', () => {
+    const s = surface({ resources: [{ uri: 'file:///a.txt' }] });
+    expect(find(s, 'resource-name-missing')?.level).toBe('warn');
+    expect(find(s, 'resource-description-missing')?.level).toBe('info');
+    expect(find(s, 'resource-mimetype-missing')?.level).toBe('info');
+  });
+});
+
+describe('resource templates', () => {
+  const tpl = (over = {}) => ({
+    uriTemplate: 'file:///logs/{date}.log',
+    name: 'Log',
+    description: 'One day of logs.',
+    ...over
+  });
+
+  it('is quiet for a well-formed template', () => {
+    expect(rules(surface({ resourceTemplates: [tpl()] }))).toEqual([]);
+  });
+
+  it('warns when a template has no placeholder', () => {
+    const s = surface({ resourceTemplates: [tpl({ uriTemplate: 'file:///static.txt' })] });
+    expect(find(s, 'template-no-placeholder')?.level).toBe('warn');
+  });
+
+  it('errors on a missing uriTemplate', () => {
+    expect(find(surface({ resourceTemplates: [tpl({ uriTemplate: '' })] }), 'template-uri-missing')?.level).toBe('error');
+  });
+
+  it('errors on duplicate templates', () => {
+    const s = surface({ resourceTemplates: [tpl(), tpl({ name: 'Other' })] });
+    expect(find(s, 'template-duplicate-uri')?.level).toBe('error');
+  });
+});
+
+describe('prompts', () => {
+  const prompt = (over = {}) => ({
+    name: 'summarize',
+    description: 'Summarize text.',
+    arguments: [{ name: 'text', description: 'The text.', required: true }],
+    ...over
+  });
+
+  it('is quiet for a fully specified prompt', () => {
+    expect(rules(surface({ prompts: [prompt()] }))).toEqual([]);
+  });
+
+  it('errors on a nameless prompt', () => {
+    expect(find(surface({ prompts: [prompt({ name: '' })] }), 'prompt-name-missing')?.level).toBe('error');
+  });
+
+  it('errors on a duplicate prompt name', () => {
+    expect(find(surface({ prompts: [prompt(), prompt()] }), 'prompt-duplicate-name')?.level).toBe('error');
+  });
+
+  it('errors on an argument with no name', () => {
+    const s = surface({ prompts: [prompt({ arguments: [{ name: '', description: 'x' }] })] });
+    expect(find(s, 'prompt-argument-name-missing')?.message).toContain('position 0');
+  });
+
+  it('errors on duplicate argument names', () => {
+    const s = surface({
+      prompts: [prompt({ arguments: [{ name: 'text', description: 'a' }, { name: 'text', description: 'b' }] })]
+    });
+    expect(find(s, 'prompt-duplicate-argument')?.level).toBe('error');
+  });
+
+  it('warns on a missing prompt description', () => {
+    expect(find(surface({ prompts: [prompt({ description: '' })] }), 'prompt-description-missing')?.level).toBe('warn');
+  });
+
+  it('notes undocumented arguments at info', () => {
+    const s = surface({ prompts: [prompt({ arguments: [{ name: 'text' }] })] });
+    expect(find(s, 'prompt-argument-descriptions')?.message).toContain('text');
+  });
+
+  it('accepts a prompt with no arguments at all', () => {
+    expect(rules(surface({ prompts: [prompt({ arguments: undefined })] }))).toEqual([]);
   });
 });
 
@@ -307,6 +419,26 @@ describe('snapshots', () => {
     const d = diffSnapshots(before, after);
     expect(d.added).toEqual(['tool b']);
     expect(d.removed).toEqual(['tool a']);
+  });
+
+  it('detects a changed prompt argument list, which breaks callers', () => {
+    const p = (args: Array<{ name: string; description?: string; required?: boolean }>) =>
+      surface({ prompts: [{ name: 'summarize', description: 'd', arguments: args }] });
+
+    const before = toSnapshot(p([{ name: 'text', required: true }]));
+    const renamed = toSnapshot(p([{ name: 'body', required: true }]));
+    const flagged = toSnapshot(p([{ name: 'text', required: false }]));
+
+    expect(diffSnapshots(before, renamed).changed[0]?.detail).toContain('arguments');
+    expect(diffSnapshots(before, flagged).changed[0]?.detail).toContain('arguments');
+  });
+
+  it('records resource templates', () => {
+    const before = toSnapshot(surface());
+    const after = toSnapshot(
+      surface({ resourceTemplates: [{ uriTemplate: 'file:///{id}.txt', name: 'T' }] })
+    );
+    expect(diffSnapshots(before, after).added).toEqual(['resource template file:///{id}.txt']);
   });
 
   it('reports a changed input schema', () => {

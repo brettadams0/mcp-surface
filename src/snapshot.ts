@@ -2,7 +2,12 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Surface } from './types.js';
 
-export const SNAPSHOT_VERSION = 1;
+/**
+ * 2 — added resourceTemplates, and prompt arguments. A v1 file records neither,
+ * so it would silently pass a prompt whose signature had changed. `readSnapshot`
+ * rejects the old version and tells you to re-record rather than guessing.
+ */
+export const SNAPSHOT_VERSION = 2;
 
 export interface Snapshot {
   snapshotVersion: number;
@@ -16,7 +21,14 @@ export interface Snapshot {
     annotations?: Record<string, unknown>;
   }>;
   resources: Array<{ uri: string; name: string; mimeType?: string }>;
-  prompts: Array<{ name: string; description: string }>;
+  resourceTemplates: Array<{ uriTemplate: string; name: string; mimeType?: string }>;
+  prompts: Array<{
+    name: string;
+    description: string;
+    // Recorded because changing a prompt's arguments breaks every caller, which
+    // is exactly the silent break a snapshot exists to catch.
+    arguments: Array<{ name: string; description: string; required: boolean }>;
+  }>;
 }
 
 /**
@@ -60,9 +72,25 @@ export function toSnapshot(surface: Surface): Snapshot {
     resources: [...surface.resources]
       .sort((a, b) => (a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0))
       .map((r) => ({ uri: r.uri, name: r.name ?? '', ...(r.mimeType ? { mimeType: r.mimeType } : {}) })),
+    resourceTemplates: [...surface.resourceTemplates]
+      .sort((a, b) => (a.uriTemplate < b.uriTemplate ? -1 : a.uriTemplate > b.uriTemplate ? 1 : 0))
+      .map((t) => ({
+        uriTemplate: t.uriTemplate,
+        name: t.name ?? '',
+        ...(t.mimeType ? { mimeType: t.mimeType } : {})
+      })),
     prompts: [...surface.prompts]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .map((p) => ({ name: p.name, description: p.description ?? '' }))
+      .map((p) => ({
+        name: p.name,
+        description: p.description ?? '',
+        // Argument order is part of the contract, so it is not sorted.
+        arguments: (p.arguments ?? []).map((a) => ({
+          name: a.name,
+          description: a.description ?? '',
+          required: a.required ?? false
+        }))
+      }))
   }) as Snapshot;
 }
 
@@ -114,9 +142,23 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
     b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null
   );
 
-  diffKeyed(before.prompts, after.prompts, (p) => p.name, 'prompt', diff, (b, a) =>
-    b.description !== a.description ? 'description changed' : null
+  diffKeyed(
+    before.resourceTemplates ?? [],
+    after.resourceTemplates ?? [],
+    (t) => t.uriTemplate,
+    'resource template',
+    diff,
+    (b, a) => (b.mimeType !== a.mimeType ? `mimeType ${b.mimeType ?? 'none'} -> ${a.mimeType ?? 'none'}` : null)
   );
+
+  diffKeyed(before.prompts, after.prompts, (p) => p.name, 'prompt', diff, (b, a) => {
+    const parts: string[] = [];
+    if (b.description !== a.description) parts.push('description');
+    // Compared as a whole so a reorder, rename, or required-flag flip all show
+    // up — each of those breaks callers.
+    if (JSON.stringify(b.arguments ?? []) !== JSON.stringify(a.arguments ?? [])) parts.push('arguments');
+    return parts.length > 0 ? `${parts.join(', ')} changed` : null;
+  });
 
   return diff;
 }

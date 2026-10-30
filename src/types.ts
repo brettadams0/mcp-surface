@@ -27,9 +27,24 @@ export interface ResourceSurface {
   mimeType?: string;
 }
 
+/** A parameterised resource, listed separately from concrete resources. */
+export interface ResourceTemplateSurface {
+  uriTemplate: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface PromptArgumentSurface {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
 export interface PromptSurface {
   name: string;
   description?: string;
+  arguments?: PromptArgumentSurface[];
 }
 
 /**
@@ -57,6 +72,7 @@ export interface Surface {
   instructions?: string;
   tools: ToolSurface[];
   resources: ResourceSurface[];
+  resourceTemplates: ResourceTemplateSurface[];
   prompts: PromptSurface[];
   /**
    * Capabilities the server declared but whose list call failed. Distinguishes

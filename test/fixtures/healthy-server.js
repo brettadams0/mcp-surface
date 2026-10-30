@@ -8,11 +8,17 @@
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListPromptsRequestSchema
+} from '@modelcontextprotocol/sdk/types.js';
 
 const server = new Server(
   { name: 'healthy-fixture', version: '1.0.0' },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
 const TOOLS = [
@@ -49,7 +55,41 @@ const TOOLS = [
   }
 ];
 
+const RESOURCES = [
+  {
+    uri: 'file:///readme.md',
+    name: 'Readme',
+    description: 'Project readme, in Markdown.',
+    mimeType: 'text/markdown'
+  }
+];
+
+const RESOURCE_TEMPLATES = [
+  {
+    uriTemplate: 'file:///logs/{date}.log',
+    name: 'Daily log',
+    description: 'Log file for one day; {date} is YYYY-MM-DD.',
+    mimeType: 'text/plain'
+  }
+];
+
+const PROMPTS = [
+  {
+    name: 'summarize',
+    description: 'Summarize a piece of text at a chosen length.',
+    arguments: [
+      { name: 'text', description: 'The text to summarize.', required: true },
+      { name: 'length', description: 'Target length in sentences.', required: false }
+    ]
+  }
+];
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: RESOURCES }));
+server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+  resourceTemplates: RESOURCE_TEMPLATES
+}));
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: PROMPTS }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;

@@ -146,7 +146,23 @@ This pairs with `mutation-annotations` — annotate your server honestly, and `-
 | `tool-call-none-eligible` | info | `--call` only — no tool met both safety conditions |
 | `surface-tool-count` | warn | More tools than `--max-tools` (default 40) |
 | `surface-token-cost` | warn | Definitions exceed `--max-definition-bytes` (default 16 KB) |
-| `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
+| `resource-uri-missing` | error | A resource has no `uri` |
+| `resource-duplicate-uri` | error | Two resources share a URI; only one is reachable |
+| `resource-uri-malformed` | warn | URI has no scheme, so clients may not resolve it |
+| `resource-name-missing` | warn | No name; pickers show only the raw URI |
+| `template-uri-missing` | error | A template has no `uriTemplate` |
+| `template-duplicate-uri` | error | Two templates share a `uriTemplate` |
+| `template-no-placeholder` | warn | Template has no `{placeholder}` — it isn't one |
+| `template-name-missing` | warn | No name for the template |
+| `prompt-name-missing` | error | A prompt has no name; clients key on it |
+| `prompt-duplicate-name` | error | Two prompts share a name |
+| `prompt-argument-name-missing` | error | An argument has no name, so it can't be supplied |
+| `prompt-duplicate-argument` | error | Two arguments of one prompt share a name |
+| `prompt-description-missing` | warn | Nothing to show a user choosing a prompt |
+| `resource-description-missing` | info | No description on a resource |
+| `resource-mimetype-missing` | info | No `mimeType`; clients guess how to render |
+| `template-description-missing` | info | Nothing explains the placeholders |
+| `prompt-argument-descriptions` | info | Prompt arguments with no description || `tool-description-long` | info | Description over `--max-description-chars` (default 1024) |
 | `schema-property-descriptions` | info | Input properties with no description |
 
 Silence any of them with `--skip <rule>`.

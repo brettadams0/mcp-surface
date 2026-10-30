@@ -31,6 +31,7 @@ export function toJson(input: ReportInput): string {
       counts: {
         tools: probe.surface.tools.length,
         resources: probe.surface.resources.length,
+        resourceTemplates: probe.surface.resourceTemplates.length,
         prompts: probe.surface.prompts.length
       },
       findings,
@@ -53,9 +54,13 @@ export function toText(input: ReportInput): string {
   );
   out.push(
     pc.dim(
-      `${s.tools.length} tools · ${s.resources.length} resources · ${s.prompts.length} prompts · capabilities: ${
-        Object.keys(s.capabilities).join(', ') || 'none'
-      }`
+      [
+        `${s.tools.length} tools`,
+        `${s.resources.length} resources`,
+        ...(s.resourceTemplates.length > 0 ? [`${s.resourceTemplates.length} templates`] : []),
+        `${s.prompts.length} prompts`,
+        `capabilities: ${Object.keys(s.capabilities).join(', ') || 'none'}`
+      ].join(' · ')
     )
   );
   out.push('');

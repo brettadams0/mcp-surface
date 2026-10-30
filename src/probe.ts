@@ -6,6 +6,7 @@ import type {
   ProbeResult,
   PromptSurface,
   ResourceSurface,
+  ResourceTemplateSurface,
   Surface,
   ToolSurface
 } from './types.js';
@@ -24,6 +25,13 @@ const AnyResult = z.looseObject({});
 
 const errorMessage = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
+
+/** JSON-RPC "method not found" — the server simply doesn't implement it. */
+function isMethodNotFound(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === -32601) return true;
+  return /method not found|not supported|unknown method/i.test(errorMessage(err));
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -93,9 +101,34 @@ function asResource(entry: unknown): ResourceSurface {
   };
 }
 
+function asResourceTemplate(entry: unknown): ResourceTemplateSurface {
+  const o = isRecord(entry) ? entry : {};
+  return {
+    uriTemplate: str(o.uriTemplate) ?? '',
+    name: str(o.name),
+    description: str(o.description),
+    mimeType: str(o.mimeType)
+  };
+}
+
 function asPrompt(entry: unknown): PromptSurface {
   const o = isRecord(entry) ? entry : {};
-  return { name: str(o.name) ?? '', description: str(o.description) };
+  const args = Array.isArray(o.arguments)
+    ? o.arguments.map((a) => {
+        const arg = isRecord(a) ? a : {};
+        return {
+          name: str(arg.name) ?? '',
+          description: str(arg.description),
+          ...(typeof arg.required === 'boolean' ? { required: arg.required } : {})
+        };
+      })
+    : undefined;
+
+  return {
+    name: str(o.name) ?? '',
+    description: str(o.description),
+    ...(args ? { arguments: args } : {})
+  };
 }
 
 /**
@@ -204,12 +237,18 @@ export async function probe(
     const collect = async <T>(
       capability: 'tools' | 'resources' | 'prompts',
       method: string,
-      map: (entry: unknown) => T
+      map: (entry: unknown) => T,
+      /** Result key, when it differs from the capability name. */
+      key: string = capability
     ): Promise<T[]> => {
       if (!capabilities[capability]) return [];
       try {
-        return (await listAll(client, method, capability, opts.timeoutMs)).map(map);
+        return (await listAll(client, method, key, opts.timeoutMs)).map(map);
       } catch (err) {
+        // `resources/templates/list` is optional even for a server that
+        // declares `resources`, so "method not found" means "none", not a
+        // fault. Anything else is still worth reporting.
+        if (isMethodNotFound(err)) return [];
         listErrors.push({ capability, message: errorMessage(err) });
         return [];
       }
@@ -221,6 +260,14 @@ export async function probe(
       instructions: client.getInstructions(),
       tools: await collect('tools', 'tools/list', asTool),
       resources: await collect('resources', 'resources/list', asResource),
+      // Templates live behind the same `resources` capability but a separate
+      // method, and plenty of servers expose only one of the two.
+      resourceTemplates: await collect(
+        'resources',
+        'resources/templates/list',
+        asResourceTemplate,
+        'resourceTemplates'
+      ),
       prompts: await collect('prompts', 'prompts/list', asPrompt),
       listErrors
     };

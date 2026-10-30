@@ -2,6 +2,7 @@ import { DEFAULT_CHECK_CONFIG, type Check, type CheckConfig, type Finding, type 
 import { callResultsCheck } from './calls.js';
 import { mutationAnnotationsCheck } from './mutation.js';
 import { namingCheck } from './naming.js';
+import { promptsCheck, resourceTemplatesCheck, resourcesCheck } from './resources.js';
 import { propertyDescriptionsCheck, requiredPropsCheck, schemaValidCheck } from './schema.js';
 import {
   annotationsCheck,
@@ -22,6 +23,9 @@ export const allChecks: Check[] = [
   annotationsCheck,
   mutationAnnotationsCheck,
   propertyDescriptionsCheck,
+  resourcesCheck,
+  resourceTemplatesCheck,
+  promptsCheck,
   callResultsCheck
 ];
 

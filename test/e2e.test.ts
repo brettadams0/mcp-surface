@@ -49,6 +49,8 @@ describe('end-to-end against a real stdio server', () => {
     const errors = findings.filter((f) => f.level === 'error');
 
     expect(errors.map((f) => f.rule).sort()).toEqual([
+      'prompt-argument-name-missing',
+      'resource-duplicate-uri',
       'schema-required-props',
       'schema-root-type',
       'schema-valid',
@@ -59,6 +61,22 @@ describe('end-to-end against a real stdio server', () => {
     expect(errors.find((f) => f.rule === 'schema-root-type')?.subject).toBe('wrong_root_type');
     expect(errors.find((f) => f.rule === 'schema-valid')?.subject).toBe('bad_schema');
     expect(errors.find((f) => f.rule === 'tool-duplicate-name')?.subject).toBe('duplicate');
+    expect(errors.find((f) => f.rule === 'resource-duplicate-uri')?.subject).toBe('file:///dup.txt');
+
+    // Warnings the fixture also plants, on the non-tool half of the surface.
+    const warnRules = findings.filter((f) => f.level === 'warn').map((f) => f.rule);
+    expect(warnRules).toContain('resource-uri-malformed');
+    expect(warnRules).toContain('template-no-placeholder');
+  }, 30_000);
+
+  it('reads resources, templates and prompts from the healthy fixture', async () => {
+    const result = await probe(parseTarget(['node', fixture('healthy-server.js')]), OPTS);
+    const s = result.surface;
+
+    expect(s.resources.map((r) => r.uri)).toEqual(['file:///readme.md']);
+    expect(s.resourceTemplates.map((t) => t.uriTemplate)).toEqual(['file:///logs/{date}.log']);
+    expect(s.prompts[0]?.arguments?.map((a) => a.name)).toEqual(['text', 'length']);
+    expect(runChecks(s)).toEqual([]);
   }, 30_000);
 
   it('surfaces a connection failure rather than hanging', async () => {

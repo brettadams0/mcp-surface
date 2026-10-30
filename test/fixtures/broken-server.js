@@ -49,6 +49,27 @@ const TOOLS = [
   }
 ];
 
+const RESOURCES = [
+  // No scheme — a bare path is not a URI, and clients can't resolve it.
+  { uri: 'readme.md', name: 'Readme' },
+  { uri: 'file:///dup.txt', name: 'First' },
+  // Same URI again: clients key on it, so one of these is unreachable.
+  { uri: 'file:///dup.txt', name: 'Second' }
+];
+
+const RESOURCE_TEMPLATES = [
+  // No {placeholder} — this is a plain resource in the wrong list.
+  { uriTemplate: 'file:///static.txt', name: 'Not really a template' }
+];
+
+const PROMPTS = [
+  {
+    name: 'summarize',
+    // An argument with no name can never be supplied.
+    arguments: [{ description: 'The text to summarize.', required: true }]
+  }
+];
+
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 const reply = (id, result) => send({ jsonrpc: '2.0', id, result });
 
@@ -72,12 +93,21 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         // Echo the client's protocol version so this fixture keeps working as
         // the spec revision moves.
         protocolVersion: message.params?.protocolVersion ?? '2025-06-18',
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: { name: 'broken-fixture', version: '1.0.0' }
       });
       return;
     case 'tools/list':
       reply(message.id, { tools: TOOLS });
+      return;
+    case 'resources/list':
+      reply(message.id, { resources: RESOURCES });
+      return;
+    case 'resources/templates/list':
+      reply(message.id, { resourceTemplates: RESOURCE_TEMPLATES });
+      return;
+    case 'prompts/list':
+      reply(message.id, { prompts: PROMPTS });
       return;
     case 'tools/call':
       reply(message.id, { content: [{ type: 'text', text: 'ok' }] });
