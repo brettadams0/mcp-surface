@@ -1,17 +1,49 @@
 import { Ajv, type AnySchemaObject } from 'ajv';
+import Ajv2019 from 'ajv/dist/2019.js';
+import Ajv2020 from 'ajv/dist/2020.js';
 import type { Check, Finding } from '../types.js';
 
 /**
- * Tool schemas in the wild are draft-07-flavoured and rarely carry `$schema`.
+ * Tool schemas may explicitly use JSON Schema draft-07, 2019-09, or 2020-12.
  *
- * `strict: false` keeps Ajv from rejecting unknown keywords the spec permits
- * (`title`, vendor extensions) — we want real schema errors, not pedantry
- * about metadata. `validateFormats: false` for the same reason: we compile
- * schemas to prove they are well-formed and never validate instances against
- * them, so an unrecognised `format` is not this tool's business to complain about.
+ * Ajv's default constructor only understands draft-07. Sending a 2020-12
+ * schema to it fails at the $schema meta-schema lookup, even if the MCP tool
+ * is correct. Compile each input/output schema with its declared dialect.
+ * The dialect is selected per schema: servers can expose a mixture.
+ *
+ * Unlabelled schemas retain the historical draft-07 behavior for backward
+ * compatibility. Unknown/unsupported dialects are reported rather than being
+ * silently compiled using the wrong specification.
  */
-function makeValidator(): Ajv {
-  return new Ajv({ strict: false, allErrors: true, validateFormats: false });
+const VALIDATOR_OPTIONS = { strict: false, allErrors: true, validateFormats: false } as const;
+
+function makeValidators(): Record<'draft7' | 'draft2019' | 'draft2020', Ajv> {
+  return {
+    draft7: new Ajv(VALIDATOR_OPTIONS),
+    draft2019: new Ajv2019(VALIDATOR_OPTIONS),
+    draft2020: new Ajv2020(VALIDATOR_OPTIONS)
+  };
+}
+
+function validatorFor(
+  schema: Record<string, unknown>,
+  validators: ReturnType<typeof makeValidators>
+): Ajv {
+  const dialect = schema.$schema;
+  if (dialect === undefined) return validators.draft7;
+  if (typeof dialect !== 'string') {
+    throw new Error('$schema must be a string URI when present');
+  }
+  if (/^https?:\/\/json-schema\.org\/draft\/2020-12\/schema#?$/.test(dialect)) {
+    return validators.draft2020;
+  }
+  if (/^https?:\/\/json-schema\.org\/draft\/2019-09\/schema#?$/.test(dialect)) {
+    return validators.draft2019;
+  }
+  if (/^https?:\/\/json-schema\.org\/draft-07\/schema#?$/.test(dialect)) {
+    return validators.draft7;
+  }
+  throw new Error(`Unsupported JSON Schema dialect ${JSON.stringify(dialect)}`);
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -26,7 +58,7 @@ export const schemaValidCheck: Check = {
   id: 'schema-valid',
   run(surface) {
     const findings: Finding[] = [];
-    const ajv = makeValidator();
+    const validators = makeValidators();
 
     for (const tool of surface.tools) {
       // `inputSchema` is required by the spec; `outputSchema` is optional.
@@ -65,7 +97,7 @@ export const schemaValidCheck: Check = {
         }
 
         try {
-          ajv.compile(schema as AnySchemaObject);
+          validatorFor(schema, validators).compile(schema as AnySchemaObject);
         } catch (err) {
           findings.push({
             rule: 'schema-valid',
