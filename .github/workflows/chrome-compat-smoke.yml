@@ -1,0 +1,36 @@
+name: One-time third-party Chrome MCP compatibility evidence
+
+on:
+  push:
+    branches: [fix/json-schema-dialects]
+    paths: [.github/workflows/chrome-compat-smoke.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  real-chrome-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run typecheck && npm test && npm run build
+      - name: Real chrome-devtools-mcp tool-list probe (no tool calls)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s node dist/cli.js --timeout 90000 --json-out /tmp/chrome-report.json -- npx -y chrome-devtools-mcp@latest --headless --isolated
+          node --input-type=module - <<'JS'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('/tmp/chrome-report.json', 'utf8'));
+          console.log('Third-party server:', report.server);
+          console.log('Tool count:', report.counts.tools);
+          console.log('Summary:', report.summary);
+          console.log('Schema violations:', report.findings.filter(x => x.rule === 'schema-valid'));
+          if (report.counts.tools < 20) throw new Error('Unexpectedly small tool surface; evidence incomplete');
+          if (report.findings.some(x => x.rule === 'schema-valid')) throw new Error('Valid third-party schemas still reported invalid');
+          JS
