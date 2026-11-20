@@ -113,9 +113,13 @@ export const schemaValidCheck: Check = {
 };
 
 /**
- * `required: ["foo"]` with no `properties.foo` makes a field impossible to
- * satisfy — every call fails validation. Cheap to write by accident when
- * renaming a property, and invisible until a model tries to call the tool.
+ * A required key without a local properties declaration is not necessarily
+ * impossible in JSON Schema: additionalProperties is allowed by default, and
+ * patternProperties/composed schemas can define it elsewhere.
+ *
+ * Only a closed object (additionalProperties: false) with no patternProperties
+ * makes such a key provably unsatisfiable. Otherwise warn about unclear local
+ * argument documentation, without calling a valid schema invalid.
  */
 export const requiredPropsCheck: Check = {
   id: 'schema-required-props',
@@ -136,15 +140,21 @@ export const requiredPropsCheck: Check = {
         const missing = required.filter(
           (key): key is string => typeof key === 'string' && !(key in properties)
         );
+        if (missing.length === 0) continue;
 
-        if (missing.length > 0) {
-          findings.push({
-            rule: 'schema-required-props',
-            level: 'error',
-            subject: tool.name,
-            message: `${label}.required lists ${missing.map((m) => `"${m}"`).join(', ')} with no matching entry in properties — those arguments can never be satisfied`
-          });
-        }
+        // If patternProperties is present, its patterns may describe a
+        // required key. Avoid speculating about the regex or composition.
+        const hasPatterns = isObject(schema.patternProperties) &&
+          Object.keys(schema.patternProperties).length > 0;
+        const impossible = schema.additionalProperties === false && !hasPatterns;
+        findings.push({
+          rule: 'schema-required-props',
+          level: impossible ? 'error' : 'warn',
+          subject: tool.name,
+          message: impossible
+            ? `${label}.required lists ${missing.map((m) => `"${m}"`).join(', ')} with no matching properties and additionalProperties: false — the required arguments cannot be supplied`
+            : `${label}.required lists ${missing.map((m) => `"${m}"`).join(', ')} without a local properties declaration — they may be defined by additionalProperties or other schema keywords; verify the model has enough argument guidance`
+        });
       }
     }
     return findings;
