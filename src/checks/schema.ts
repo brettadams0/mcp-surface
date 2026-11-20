@@ -50,6 +50,24 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
+ * Strict, side-effect-free gate for optional --call. An inputSchema that
+ * compiles successfully may still reject empty arguments (required keys,
+ * minProperties, conditional schemas, refs). Do not invoke such a tool with {}.
+ *
+ * The checker normally inspects schemas without invoking anything. This
+ * helper is used only after the user explicitly requests --call.
+ */
+export function acceptsEmptyToolInput(schema: unknown): boolean {
+  if (!isObject(schema) || schema.type !== 'object') return false;
+  try {
+    const validate = validatorFor(schema, makeValidators()).compile(schema as AnySchemaObject);
+    return validate({}) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A tool whose schema does not compile is unusable: the client can't validate
  * arguments and the model gets no reliable shape to fill in. This is the
  * highest-value check in the tool, so it is the only schema rule at `error`.
