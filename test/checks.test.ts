@@ -71,6 +71,120 @@ describe('schema checks', () => {
     expect(find(s, 'schema-valid')?.level).toBe('error');
   });
 
+  it('accepts modern 2020-12 input and output schemas', () => {
+    const dialect = 'https://json-schema.org/draft/2020-12/schema';
+    const s = surface({
+      tools: [tool({
+        inputSchema: {
+          $schema: dialect, type: 'object',
+          properties: {
+            pair: {
+              type: 'array', prefixItems: [{ type: 'string' }, { type: 'integer' }],
+              description: 'Tuple with two ordered values.'
+            }
+          },
+          unevaluatedProperties: false
+        },
+        outputSchema: { $schema: dialect, type: 'object', properties: {} }
+      })]
+    });
+    expect(rules(s)).not.toContain('schema-valid');
+  });
+
+  it('accepts 2019-09 input and output schemas', () => {
+    const dialect = 'https://json-schema.org/draft/2019-09/schema';
+    const s = surface({
+      tools: [tool({
+        inputSchema: {
+          $schema: dialect, type: 'object',
+          properties: { value: { type: 'string', description: 'A value.' } },
+          unevaluatedProperties: false
+        },
+        outputSchema: { $schema: dialect, type: 'object', properties: {} }
+      })]
+    });
+    expect(rules(s)).not.toContain('schema-valid');
+  });
+
+  it('keeps draft-07 and missing-$schema backward compatibility', () => {
+    const s = surface({
+      tools: [
+        tool({
+          name: 'explicit',
+          inputSchema: {
+            $schema: 'http://json-schema.org/draft-07/schema#',
+            type: 'object', properties: {}
+          }
+        }),
+        tool({ name: 'implicit', inputSchema: { type: 'object', properties: {} } })
+      ]
+    });
+    expect(rules(s)).not.toContain('schema-valid');
+  });
+
+  it('supports different dialects independently on tools and outputs', () => {
+    const s = surface({
+      tools: [
+        tool({
+          name: 'modern',
+          inputSchema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object' },
+          outputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object' }
+        }),
+        tool({
+          name: 'older',
+          inputSchema: { $schema: 'https://json-schema.org/draft/2019-09/schema', type: 'object' }
+        })
+      ]
+    });
+    expect(rules(s)).not.toContain('schema-valid');
+  });
+
+  it.each([
+    'https://json-schema.org/draft/2020-12/schema',
+    'https://json-schema.org/draft/2019-09/schema',
+    'http://json-schema.org/draft-07/schema#',
+    undefined
+  ])('rejects malformed property constraints under %s', ($schema) => {
+    const s = surface({
+      tools: [tool({
+        inputSchema: {
+          ...($schema ? { $schema } : {}),
+          type: 'object',
+          properties: { invalid: { type: 'not-a-real-type' } }
+        }
+      })]
+    });
+    expect(find(s, 'schema-valid')?.level).toBe('error');
+  });
+
+  it('rejects unsupported explicit dialects rather than guessing draft-07', () => {
+    const s = surface({
+      tools: [tool({
+        inputSchema: { $schema: 'https://json-schema.org/draft/2099-01/schema', type: 'object' }
+      })]
+    });
+    expect(find(s, 'schema-valid')?.message).toContain('Unsupported JSON Schema dialect');
+  });
+
+  it('flags a nonstring explicit dialect', () => {
+    const s = surface({ tools: [tool({ inputSchema: { $schema: 202012, type: 'object' } })] });
+    expect(find(s, 'schema-valid')?.message).toContain('$schema must be a string URI');
+  });
+
+  it('does not flag 33 valid 2020-12 tools as schema-invalid', () => {
+    const tools = Array.from({ length: 33 }, (_, index) => tool({
+      name: `third_party_tool_${index}`,
+      inputSchema: {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query.' }
+        }
+      }
+    }));
+    expect(runChecks(surface({ tools })).filter((f) => f.rule === 'schema-valid')).toEqual([]);
+  });
+
   it('catches required entries with no matching property', () => {
     const s = surface({
       tools: [
