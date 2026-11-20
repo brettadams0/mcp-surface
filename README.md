@@ -113,6 +113,13 @@ unsatisfiable: JSON Schema permits additional properties by default. The checker
 now reports an error only for an impossible closed schema and a warning for
 ambiguous open schemas.
 
+**Verified third-party run:** Against `chrome-devtools-mcp` 1.13.0, the
+Node 24 hosted check inspected all **33 tools** and reported **0 schema errors**.
+The remaining finding was one warning for approximately **28.1 KB of tool
+definitions** versus the configurable 16 KB default. This was a real stdio MCP
+probe without executing the server's tools. [Recorded CI evidence](https://github.com/brettadams0/mcp-surface/actions/runs/44654147231).
+
+
 ### Checks
 
 Every rule is a pure function from the surface to a list of findings, grouped by area:
