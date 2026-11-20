@@ -71,7 +71,7 @@ acceptable is a decision; the point is that it is now a decision someone makes i
 request, rather than a looser contract that ships unread. None of the five upgrades has been
 merged.
 
-The suite is 54 tests in three files, all passing. The end-to-end tests drive the two fixture
+The expanded suite includes mixed-dialect validation, malformed modern schemas, 33-tool regression coverage, and conservative tool-call eligibility. CI runs it on Node 22.12, 22 and 24. The end-to-end tests drive the two fixture
 servers over real stdio, not mocks — but they are local fixtures, not third-party servers, so what
 it misses on servers in the wild is only known from reports. If it passes a server your client
 cannot use, or flags one that works, the **wrong verdict** issue template asks for exactly what is
@@ -98,6 +98,21 @@ still read. Malformed entries are coerced into shape without being dropped: a to
 name or no schema still has to reach the checks, because reporting it is the point.
 ([`probe.ts`](src/probe.ts))
 
+### JSON Schema dialects
+
+The validator selects draft-07 (the historical fallback), draft 2019-09, or
+draft 2020-12 **per input/output schema** from its explicit `$schema` URI.
+Older schemas without a declaration retain draft-07 behavior. Unknown explicit
+dialects are reported rather than silently misinterpreted. This corrects a
+real-world false-positive class found when probing Chrome DevTools MCP, whose
+tools declared 2020-12. Tests cover valid modern schemas, truly invalid ones,
+mixed dialects and a 33-tool surface.
+
+An undeclared `required` property does not inherently make a schema
+unsatisfiable: JSON Schema permits additional properties by default. The checker
+now reports an error only for an impossible closed schema and a warning for
+ambiguous open schemas.
+
 ### Checks
 
 Every rule is a pure function from the surface to a list of findings, grouped by area:
@@ -121,10 +136,12 @@ PowerShell's `Set-Content -Encoding utf8` prepend, is stripped before parsing.
 
 `--call` invokes tools after the whole surface has been read, so a tool that hangs or crashes the
 server still leaves a complete report. A tool is called only when it declares
-`readOnlyHint: true` **and** takes no required arguments. Absence of an annotation is not consent,
+`readOnlyHint: true`, **does not** declare `destructiveHint: true`, and its
+compiled input schema actually accepts `{}` (including composed constraints). Absence of an annotation is not consent,
 and inventing plausible arguments for someone else's API is how you end up calling
 `delete_user({ id: "test" })`. There is no flag to loosen either condition. Everything else is
-listed as skipped, with the reason. ([`probe.ts`](src/probe.ts), [`calls.ts`](src/checks/calls.ts))
+listed as skipped, with the reason. Even declared read-only hints are claims by the server,
+not a permission boundary: leave `--call` off when inspecting unknown or untrusted servers. ([`probe.ts`](src/probe.ts), [`calls.ts`](src/checks/calls.ts))
 
 ## Reading the list the SDK would reject
 
