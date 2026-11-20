@@ -23,8 +23,9 @@ may change the CLI or the JSON report shape.
 
 - Tool `inputSchema` and `outputSchema` now compile under their declared JSON Schema
   2020-12 or 2019-09 dialect, with draft-07 retained for older/unlabelled schemas.
-  This prevents false errors such as the 33 valid Chrome DevTools MCP tools that
-  exposed the bug. Unknown explicit dialects fail clearly rather than silently
+  This prevents false errors such as the Chrome DevTools MCP tools that
+  exposed the bug; an actual hosted probe of v1.13.0 confirmed 33 tools,
+  zero schema errors and one definition-size warning. Unknown explicit dialects fail clearly rather than silently
   falling back to the wrong specification.
 - A required key absent from local `properties` is only an impossible-arguments
   **error** for provably closed schemas. Open or composed schemas receive a warning
