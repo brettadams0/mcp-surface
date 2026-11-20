@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { connect, type Target, type TargetOptions } from './connect.js';
+import { acceptsEmptyToolInput } from './checks/schema.js';
 import type {
   CallResult,
   ProbeResult,
@@ -116,13 +117,22 @@ function asPrompt(entry: unknown): PromptSurface {
  * end up calling `delete_user({ id: "test" })`.
  */
 export function callEligibility(tool: ToolSurface): { eligible: boolean; reason?: string } {
+  if (tool.annotations?.destructiveHint === true) {
+    return { eligible: false, reason: 'declares destructiveHint: true, even if also marked read-only' };
+  }
   if (tool.annotations?.readOnlyHint !== true) {
     return { eligible: false, reason: 'not annotated readOnlyHint: true' };
   }
-  const schema = isRecord(tool.inputSchema) ? tool.inputSchema : {};
+  if (!isRecord(tool.inputSchema) || tool.inputSchema.type !== 'object') {
+    return { eligible: false, reason: 'missing or invalid object inputSchema' };
+  }
+  const schema = tool.inputSchema;
   const required = Array.isArray(schema.required) ? schema.required : [];
   if (required.length > 0) {
     return { eligible: false, reason: `needs required argument(s): ${required.join(', ')}` };
+  }
+  if (!acceptsEmptyToolInput(schema)) {
+    return { eligible: false, reason: 'inputSchema does not validate empty arguments or cannot be compiled' };
   }
   return { eligible: true };
 }

@@ -7,6 +7,8 @@ may change the CLI or the JSON report shape.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-19
+
 ### Changed
 
 - **Breaking: Node 22.12 or newer is required.** `engines.node` moves from `>=20.19.0` to
@@ -19,6 +21,18 @@ may change the CLI or the JSON report shape.
 
 ### Fixed
 
+- Tool `inputSchema` and `outputSchema` now compile under their declared JSON Schema
+  2020-12 or 2019-09 dialect, with draft-07 retained for older/unlabelled schemas.
+  This prevents false errors such as the Chrome DevTools MCP tools that
+  exposed the bug; an actual hosted probe of v1.13.0 confirmed 33 tools,
+  zero schema errors and one definition-size warning. Unknown explicit dialects fail clearly rather than silently
+  falling back to the wrong specification.
+- A required key absent from local `properties` is only an impossible-arguments
+  **error** for provably closed schemas. Open or composed schemas receive a warning
+  instead; JSON Schema allows additional properties unless restricted.
+- `--call` now refuses contradictory destructive/read-only annotations, invalid
+  input schemas and schemas that reject empty arguments (including composed,
+  conditional and `minProperties` rules). No tool calls occur without `--call`.
 - The client now identifies itself in `initialize` with the real package
   version. It had been sending a hard-coded `0.1.0` since the first release.
   If the library is bundled into another package, where its own package.json
@@ -27,9 +41,10 @@ may change the CLI or the JSON report shape.
 
 ### Security
 
-- Raised `@modelcontextprotocol/sdk` to 1.32 and refreshed the lockfile, which
-  clears every open `npm audit` advisory — including GHSA-6qxp-vccf-f47h in the
-  SDK's OAuth client and seven in `fast-uri`, reached through `ajv`.
+- Refreshed transitive production dependencies within existing declared ranges to
+  address the high-severity `body-parser` advisory and related Hono/fast-uri
+  advisories. CI now checks production dependencies with
+  `npm audit --omit=dev --audit-level=high`.
 
 ## [0.3.0] — 2026-07-28
 
@@ -66,7 +81,8 @@ surface-size checks; canonicalised snapshots; JSON output; a composite GitHub
 Action; and a release workflow that publishes through npm Trusted Publishing,
 with provenance.
 
-[Unreleased]: https://github.com/brettadams0/mcp-surface/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/brettadams0/mcp-surface/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/brettadams0/mcp-surface/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/brettadams0/mcp-surface/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/brettadams0/mcp-surface/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/brettadams0/mcp-surface/compare/v0.1.1...v0.1.2

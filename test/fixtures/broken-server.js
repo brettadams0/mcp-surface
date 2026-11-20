@@ -14,14 +14,15 @@ import { createInterface } from 'node:readline';
 
 const TOOLS = [
   {
-    // `required` names a property that does not exist, so every call fails
-    // argument validation. Typical after renaming a property and missing a spot.
+    // A required property absent from a *closed* schema cannot be supplied.
+    // An open schema would permit it; the checker must not report that as impossible.
     name: 'unsatisfiable',
     description: 'Requires an argument that its schema never defines.',
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string', description: 'A query.' } },
-      required: ['query', 'apiKey']
+      required: ['query', 'apiKey'],
+      additionalProperties: false
     }
   },
   {
