@@ -1,0 +1,41 @@
+name: Refresh audited dependency lockfile
+
+on:
+  push:
+    branches: [fix/json-schema-dialects]
+    paths: [.github/workflows/refresh-audit-lock.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/json-schema-dialects
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Refresh transitive dependencies within declared ranges
+        run: npm audit fix --package-lock-only --ignore-scripts
+      - name: Validate clean production lockfile
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Commit updated lockfile only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: refresh vulnerable transitive production dependencies"
+            git push origin HEAD:fix/json-schema-dialects
+          else
+            echo "No lockfile changes"
+          fi
