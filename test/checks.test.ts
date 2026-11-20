@@ -192,7 +192,8 @@ describe('schema checks', () => {
           inputSchema: {
             type: 'object',
             properties: { id: { type: 'string' } },
-            required: ['id', 'ghost']
+            required: ['id', 'ghost'],
+            additionalProperties: false
           }
         })
       ]
@@ -201,6 +202,36 @@ describe('schema checks', () => {
     expect(f?.level).toBe('error');
     expect(f?.message).toContain('"ghost"');
     expect(f?.message).not.toContain('"id"');
+  });
+
+  it('warns instead of erroring when a required field is permitted by an open schema', () => {
+    const s = surface({
+      tools: [tool({
+        inputSchema: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Identifier.' } },
+          required: ['id', 'extension']
+        }
+      })]
+    });
+    const f = find(s, 'schema-required-props');
+    expect(f?.level).toBe('warn');
+    expect(f?.message).toContain('may be defined');
+  });
+
+  it('does not label patternProperties-supported required fields impossible', () => {
+    const s = surface({
+      tools: [tool({
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          patternProperties: { '^x-': { type: 'string' } },
+          required: ['x-auth'],
+          additionalProperties: false
+        }
+      })]
+    });
+    expect(find(s, 'schema-required-props')?.level).not.toBe('error');
   });
 
   it('validates outputSchema too', () => {
