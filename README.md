@@ -6,7 +6,7 @@
 
 An [MCP](https://modelcontextprotocol.io) server can complete the handshake, show as **Connected**
 in every client, and still never be called by the model — because its tool list came back empty, a
-schema doesn't compile, or `required` names a property that isn't there. Nothing errors. The
+schema doesn't compile, or `required` names a property a closed schema cannot accept. Nothing errors. The
 answers just get worse. `mcp-surface` connects the way a client does, reads back everything the
 server advertises, checks it, and fails CI when it changes without you meaning it to. It reads the
 server's raw `tools/list` response rather than the SDK's validated one, because the SDK rejects the
@@ -35,7 +35,7 @@ broken-fixture 1.0.0 (56ms)
 
   error  wrong_root_type inputSchema.type is "array", but MCP requires "object" [schema-root-type]
   error  bad_schema inputSchema is not valid JSON Schema: … [schema-valid]
-  error  unsatisfiable inputSchema.required lists "apiKey" with no matching entry in properties — those arguments can never be satisfied [schema-required-props]
+  error  unsatisfiable inputSchema.required lists "apiKey" with no matching properties and additionalProperties: false — the required arguments cannot be supplied [schema-required-props]
   error  duplicate Advertised 2 times — only one of them is reachable by a client [tool-duplicate-name]
   info   bad_schema 1 input property has no description: count [schema-property-descriptions]
 
@@ -202,7 +202,7 @@ if yours needs them to start.
 | `schema-valid` | error | An `inputSchema` or `outputSchema` isn't valid JSON Schema |
 | `schema-missing` | error | A tool has no `inputSchema`, which the spec requires |
 | `schema-root-type` | error | Schema root `type` isn't `"object"`, which MCP requires |
-| `schema-required-props` | error | `required` names a property that isn't in `properties` |
+| `schema-required-props` | error/warn | A closed schema requires an impossible field (error), or a required field has no local definition (warning) |
 | `tool-duplicate-name` | error | Two tools share a name; only one is reachable |
 | `tool-naming` | warn | Name outside `[A-Za-z0-9_-]`, which some clients rewrite or reject |
 | `tool-name-case-collision` | warn | Names that differ only by case |
