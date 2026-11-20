@@ -20,8 +20,8 @@ const VALIDATOR_OPTIONS = { strict: false, allErrors: true, validateFormats: fal
 function makeValidators(): Record<'draft7' | 'draft2019' | 'draft2020', Ajv> {
   return {
     draft7: new Ajv(VALIDATOR_OPTIONS),
-    draft2019: new Ajv2019(VALIDATOR_OPTIONS),
-    draft2020: new Ajv2020(VALIDATOR_OPTIONS)
+    draft2019: new Ajv2019.default(VALIDATOR_OPTIONS),
+    draft2020: new Ajv2020.default(VALIDATOR_OPTIONS)
   };
 }
 
