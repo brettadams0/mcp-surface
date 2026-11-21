@@ -24,7 +24,7 @@ Against [`test/fixtures/broken-server.js`](test/fixtures/broken-server.js), a se
 the handshake and that any client would show as connected:
 
 ```console
-$ npx mcp-surface node ./broken-server.js
+$ npx mcp-surface node ./test/fixtures/broken-server.js
 
 broken-fixture 1.0.0 (56ms)
 5 tools · 0 resources · 0 prompts · capabilities: tools
